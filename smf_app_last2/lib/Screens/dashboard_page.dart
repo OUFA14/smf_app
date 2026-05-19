@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
-
+import '../../services/events_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/alerts_service.dart';
@@ -54,6 +54,8 @@ class _DashboardPageState extends State<DashboardPage>
   late final AnimationController _livePulse;
   late final AnimationController _badgePulse;
   StreamSubscription<String>? _dashboardHistorySubscription;
+    List<EventLog> _recentEvents = [];
+  bool _isLoadingEvents = true;
   final List<_DashboardTab> _dashboardTabHistory = <_DashboardTab>[];
   final Set<int> _readNotificationIndexes = <int>{};
   final UsersService _usersService = UsersService();
@@ -88,31 +90,27 @@ class _DashboardPageState extends State<DashboardPage>
   _loadCurrentUser();
   _loadDashboardMetrics(); 
 }
-        Future<void> _loadAlerts() async {
-  try {
-    final alerts = await AlertsService().getAlerts();
-    setState(() {
-      _alerts = alerts.map((alert) => _AlertRecord(
-        title: alert.title,
-        description: alert.description,
-        severity: alert.severity,
-        status: alert.status,
-        timeLabel: _formatTimeAgo(alert.time),
-      )).toList();
-    });
-  } catch (e) {
-    
-    setState(() {
-      _alerts = MockMonitoringData.alerts.map((item) => _AlertRecord(
-        title: item.title,
-        description: item.zone,
-        severity: _normalizeSeverity(item.severity),
-        status: item.status,
-        timeLabel: item.timeLabel,
-      )).toList();
-    });
+         Future<void> _loadRecentEvents() async {
+    try {
+      final events = await EventsService().getEvents(since: 3600 * 24 * 7);
+      final sortedEvents = [...events]
+        ..sort((a, b) {
+          final aDate = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          final bDate = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          return bDate.compareTo(aDate);
+        });
+      if (mounted) {
+        setState(() {
+          _recentEvents = sortedEvents.take(3).toList();
+          _isLoadingEvents = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingEvents = false);
+      }
+    }
   }
-}
 
 String _formatTimeAgo(DateTime time) {
   final diff = DateTime.now().difference(time);
@@ -2166,39 +2164,60 @@ String _formatTimeAgo(DateTime time) {
   }
 
   Widget _recentAlertsCard({
-    required _DashboardPalette palette,
-  }) {
-    return _glassCard(
-      palette: palette,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Recent Alerts',
-                style: TextStyle(
-                  color: palette.textPrimary,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
+  required _DashboardPalette palette,
+}) {
+  final displayEvents = _isLoadingEvents ? [] : _recentEvents.take(3).toList();
+
+  return _glassCard(
+    palette: palette,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Recent Events',
+              style: TextStyle(
+                color: palette.textPrimary,
+                fontWeight: FontWeight.w800,
+                fontSize: 16,
               ),
-              const Spacer(),
-              TextButton(
-                onPressed: () => _selectDashboardTab(_DashboardTab.alerts),
-                child: const Text('View All'),
+            ),
+            const Spacer(),
+            TextButton(
+              onPressed: () => _selectDashboardTab(_DashboardTab.alerts),
+              child: const Text('View All'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        if (_isLoadingEvents)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (displayEvents.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            child: Center(
+              child: Text(
+                'No recent events',
+                style: TextStyle(color: palette.textMuted),
               ),
-            ],
-          ),
-          const SizedBox(height: 14),
+            ),
+          )
+        else
           Expanded(
             child: Column(
-              children: _alerts.take(3).toList().asMap().entries.map((entry) {
+              children: displayEvents.asMap().entries.map((entry) {
                 final index = entry.key;
-                final alert = entry.value;
+                final event = entry.value;
+                final severity = _normalizeSeverity(event.eventType);
+                final severityColor = _severityColor(severity, palette);
+                
                 return Expanded(
                   child: Container(
-                    margin: EdgeInsets.only(bottom: index == 2 ? 0 : 12),
+                    margin: EdgeInsets.only(bottom: index == displayEvents.length - 1 ? 0 : 12),
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: palette.innerCardBackground,
@@ -2208,8 +2227,8 @@ String _formatTimeAgo(DateTime time) {
                     child: Row(
                       children: [
                         Icon(
-                          Icons.lock_outline_rounded,
-                          color: _severityColor(alert.severity, palette),
+                          event.eventType.contains('SOS') ? Icons.sos_rounded : Icons.notifications_active_rounded,
+                          color: severityColor,
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -2218,7 +2237,9 @@ String _formatTimeAgo(DateTime time) {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                alert.title,
+                                event.message ?? event.eventType,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   color: palette.textPrimary,
                                   fontWeight: FontWeight.w700,
@@ -2226,7 +2247,9 @@ String _formatTimeAgo(DateTime time) {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                alert.timeLabel,
+                                event.zoneName ?? event.macAddress,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(color: palette.textMuted),
                               ),
                             ],
@@ -2238,14 +2261,13 @@ String _formatTimeAgo(DateTime time) {
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: _severityColor(alert.severity, palette)
-                                .withOpacity(0.15),
+                            color: severityColor.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
-                            alert.severity,
+                            severity,
                             style: TextStyle(
-                              color: _severityColor(alert.severity, palette),
+                              color: severityColor,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -2257,10 +2279,10 @@ String _formatTimeAgo(DateTime time) {
               }).toList(),
             ),
           ),
-        ],
-      ),
-    );
-  }
+      ],
+    ),
+  );
+}
 
   Widget _deviceOverviewCard({
     required _DashboardPalette palette,
