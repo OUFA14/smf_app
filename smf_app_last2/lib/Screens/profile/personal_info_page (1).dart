@@ -19,8 +19,8 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
   final UsersService _usersService = UsersService();
 
   // ── Basic Details ────────────────────────────────────────────────────────
-  final _fullNameCtrl = TextEditingController(text: "Admin User");
-  final _emailCtrl = TextEditingController(text: "admin@smf.com");
+  final _fullNameCtrl = TextEditingController(text: "");
+  final _emailCtrl = TextEditingController(text: "");
   bool _isLoading = false;  
   String _selectedGender = "Prefer not to say";
   final List<String> _genders = ["Male", "Female", "Prefer not to say"];
@@ -40,9 +40,9 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
       if (!mounted) return;
       setState(() {
         _fullNameCtrl.text =
-            user.name.trim().isEmpty ? 'Admin User' : user.name;
+            user.name.trim().isEmpty ?  : user.name;
         _emailCtrl.text =
-            user.email.trim().isEmpty ? 'admin@smf.com' : user.email;
+            user.email.trim().isEmpty ?  : user.email;
       });
     } catch (_) {}
   }
@@ -54,51 +54,51 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
     super.dispose();
   }
 
-  void _toggleEdit() async {
-  if (_isEditing) {
-    
-    final userId = AuthService.instance.userId;
-    if (userId == null || userId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User not logged in')),
-      );
-      return;
+    Future<void> _toggleEdit() async {
+    if (_isEditing) {
+      final userId = AuthService.instance.userId;
+      if (userId == null || userId.isEmpty) return;
+
+      setState(() => _isLoading = true);
+
+      try {
+        await _usersService.updateUser(
+          id: userId,
+          username: _fullNameCtrl.text.trim(),
+          email: _emailCtrl.text.trim(),
+          password: null,
+          roles: {_currentUser?.role ?? 'ROLE_USER'},
+          phone: _phoneCtrl.text.trim(),
+          nationalId: _nationalIdCtrl.text.trim(),
+          dateOfBirth: _dobCtrl.text.trim(),
+          gender: _selectedGender,
+        );
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.read<LanguageProvider>().getText('personalInformationSaved')),
+            backgroundColor: Colors.green.shade700,
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      } finally {
+        setState(() => _isLoading = false);
+      }
     }
-
-    setState(() => _isLoading = true);
-
-    try {
-      await _usersService.updateUser(
-        id: userId,
-        username: _fullNameCtrl.text.trim(),
-        email: _emailCtrl.text.trim(),
-        password: null, 
-        roles: {_selectedGender == 'Male' ? 'ROLE_USER' : 'ROLE_USER'}, 
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Personal information saved successfully ✓"),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Error saving: $e"),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      setState(() => _isLoading = false);
-    }
+    setState(() => _isEditing = !_isEditing);
   }
-
-  setState(() => _isEditing = !_isEditing);
-}
-
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+  return const Scaffold(
+    body: Center(child: CircularProgressIndicator()),
+  );
+}
     final themeProvider = context.watch<ThemeProvider>();
     final lang = context.watch<LanguageProvider>();
     final isDark = themeProvider.isDarkMode;
