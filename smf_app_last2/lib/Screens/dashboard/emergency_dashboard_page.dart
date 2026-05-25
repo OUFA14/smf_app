@@ -601,7 +601,7 @@ class _ActiveIncidentCard extends StatelessWidget {
           const Spacer(),
           _IncidentProgress(
             palette: palette,
-            steps: activeIncident?.steps ?? [],
+            steps: activeIncident?.steps ?? const [],
           ),
         ],
       ),
