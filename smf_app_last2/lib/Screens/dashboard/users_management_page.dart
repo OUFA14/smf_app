@@ -1,10 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../models/role_summary.dart';
 import '../../models/user.dart';
+import '../../providers/language_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/roles_service.dart';
 import '../../services/users_service.dart';
+
+String _localizedUserRole(String value, LanguageProvider lang) {
+  switch (value.trim().replaceFirst(RegExp(r'^ROLE_'), '').toUpperCase()) {
+    case 'ADMIN':
+      return lang.getText('roleAdmin');
+    case 'ENGINEER':
+      return lang.getText('roleEngineer');
+    case 'MANAGER':
+      return lang.getText('roleManager');
+    case 'WORKER':
+      return lang.getText('roleWorker');
+    case 'USER':
+      return lang.getText('roleUser');
+    default:
+      return value;
+  }
+}
 
 class UsersManagementPage extends StatefulWidget {
   const UsersManagementPage({super.key});
@@ -66,7 +85,8 @@ class _UsersManagementPageState extends State<UsersManagementPage> {
         return;
       }
       setState(() {
-        _errorMessage = 'Failed to load users.';
+        _errorMessage =
+            context.read<LanguageProvider>().getText('failedToLoadUsers');
         _isLoading = false;
       });
     }
@@ -76,8 +96,8 @@ class _UsersManagementPageState extends State<UsersManagementPage> {
     await _showUserFormDialog(
       context,
       roles: _roles,
-      title: 'Create User',
-      submitLabel: 'Create',
+      title: context.read<LanguageProvider>().getText('createUser'),
+      submitLabel: context.read<LanguageProvider>().getText('create'),
       onSubmit: ({
         required String username,
         required String email,
@@ -100,8 +120,8 @@ class _UsersManagementPageState extends State<UsersManagementPage> {
     await _showUserFormDialog(
       context,
       roles: _roles,
-      title: 'Update User',
-      submitLabel: 'Save',
+      title: context.read<LanguageProvider>().getText('updateUser'),
+      submitLabel: context.read<LanguageProvider>().getText('save'),
       initialUsername: user.name,
       initialEmail: user.email,
       initialRole: user.role,
@@ -125,19 +145,22 @@ class _UsersManagementPageState extends State<UsersManagementPage> {
   }
 
   Future<void> _deleteUser(User user) async {
+    final lang = context.read<LanguageProvider>();
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Delete user?'),
-            content: Text('This will delete ${user.name}.'),
+            title: Text(lang.getText('deleteUserQuestion')),
+            content: Text(
+              lang.getText('willDeleteItem').replaceAll('{name}', user.name),
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
+                child: Text(lang.getText('cancel')),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('Delete'),
+                child: Text(lang.getText('delete')),
               ),
             ],
           ),
@@ -154,7 +177,7 @@ class _UsersManagementPageState extends State<UsersManagementPage> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User deleted successfully.')),
+        SnackBar(content: Text(lang.getText('userDeleted'))),
       );
       await _load();
     } on ApiException catch (error) {
@@ -168,6 +191,7 @@ class _UsersManagementPageState extends State<UsersManagementPage> {
   }
 
   Future<void> _showDetails(User user) async {
+    final lang = context.read<LanguageProvider>();
     try {
       final details = await _usersService.getUser(user.id);
       if (!mounted) {
@@ -181,16 +205,18 @@ class _UsersManagementPageState extends State<UsersManagementPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('ID: ${details.id}'),
-              Text('Email: ${details.email}'),
-              Text('Role: ${details.role ?? '-'}'),
-              Text('Provider: ${details.provider ?? '-'}'),
+              Text('${lang.getText('id')}: ${details.id}'),
+              Text('${lang.getText('emailLabel')}: ${details.email}'),
+              Text(
+                '${lang.getText('role')}: ${_localizedUserRole(details.role ?? '-', lang)}',
+              ),
+              Text('${lang.getText('provider')}: ${details.provider ?? '-'}'),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
+              child: Text(lang.getText('close')),
             ),
           ],
         ),
@@ -265,6 +291,7 @@ Future<void> _showUserFormDialog(
   String? initialEmail,
   String? initialRole,
 }) async {
+  final lang = context.read<LanguageProvider>();
   final usernameController = TextEditingController(text: initialUsername ?? '');
   final emailController = TextEditingController(text: initialEmail ?? '');
   final passwordController = TextEditingController();
@@ -286,23 +313,23 @@ Future<void> _showUserFormDialog(
               children: [
                 TextFormField(
                   controller: usernameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Username',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: lang.getText('usernameLabel'),
+                    border: const OutlineInputBorder(),
                   ),
                   validator: (value) => value == null || value.trim().isEmpty
-                      ? 'Username is required.'
+                      ? lang.getText('usernameRequired')
                       : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: emailController,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: lang.getText('emailLabel'),
+                    border: const OutlineInputBorder(),
                   ),
                   validator: (value) => value == null || !value.contains('@')
-                      ? 'Enter a valid email.'
+                      ? lang.getText('emailInvalid')
                       : null,
                 ),
                 const SizedBox(height: 12),
@@ -310,14 +337,14 @@ Future<void> _showUserFormDialog(
                   controller: passwordController,
                   decoration: InputDecoration(
                     labelText: initialUsername == null
-                        ? 'Password'
-                        : 'Password (optional)',
+                        ? lang.getText('passwordLabel')
+                        : lang.getText('passwordOptional'),
                     border: const OutlineInputBorder(),
                   ),
                   validator: (value) {
                     if (initialUsername == null &&
                         (value == null || value.isEmpty)) {
-                      return 'Password is required.';
+                      return lang.getText('passwordRequired');
                     }
                     return null;
                   },
@@ -329,7 +356,7 @@ Future<void> _showUserFormDialog(
                       .map(
                         (role) => DropdownMenuItem<String>(
                           value: role.roleName,
-                          child: Text(role.roleName),
+                          child: Text(_localizedUserRole(role.roleName, lang)),
                         ),
                       )
                       .toList(),
@@ -340,9 +367,9 @@ Future<void> _showUserFormDialog(
                       });
                     }
                   },
-                  decoration: const InputDecoration(
-                    labelText: 'Role',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: lang.getText('role'),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
               ],
@@ -352,7 +379,7 @@ Future<void> _showUserFormDialog(
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(lang.getText('cancel')),
           ),
           FilledButton(
             onPressed: () async {
@@ -493,6 +520,7 @@ class _UsersToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<LanguageProvider>();
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 760;
@@ -505,7 +533,7 @@ class _UsersToolbar extends StatelessWidget {
             decoration: InputDecoration(
               prefixIcon: Icon(Icons.search_rounded,
                   color: palette.textMuted, size: 20),
-              hintText: 'Search users...',
+              hintText: lang.getText('searchUsers'),
               hintStyle: TextStyle(color: palette.textMuted),
               filled: true,
               fillColor: palette.control,
@@ -538,7 +566,7 @@ class _UsersToolbar extends StatelessWidget {
             FilledButton.icon(
               onPressed: onAdd,
               icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
-              label: const Text('Add User'),
+              label: Text(lang.getText('addUser')),
               style: FilledButton.styleFrom(
                 backgroundColor: palette.blue,
                 foregroundColor: Colors.white,
@@ -558,7 +586,7 @@ class _UsersToolbar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Users Management',
+                lang.getText('usersManagement'),
                 style: TextStyle(
                   color: palette.textPrimary,
                   fontSize: 20,
@@ -577,7 +605,7 @@ class _UsersToolbar extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                'Users Management',
+                lang.getText('usersManagement'),
                 style: TextStyle(
                   color: palette.textPrimary,
                   fontSize: 20,
@@ -612,6 +640,7 @@ class _UsersTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<LanguageProvider>();
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: Container(
@@ -637,7 +666,7 @@ class _UsersTable extends StatelessWidget {
                           child: users.isEmpty
                               ? Center(
                                   child: Text(
-                                    'No users found.',
+                                    lang.getText('noUsersFound'),
                                     style: TextStyle(
                                       color: palette.textMuted,
                                       fontWeight: FontWeight.w700,
@@ -681,18 +710,19 @@ class _UsersTableHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<LanguageProvider>();
     return Container(
       height: 48,
       color: palette.header,
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Row(
         children: [
-          _UsersHeaderCell('USER', width: 260, palette: palette),
-          _UsersHeaderCell('ROLE', width: 180, palette: palette),
-          _UsersHeaderCell('STATUS', width: 140, palette: palette),
-          _UsersHeaderCell('LAST ACTIVE', width: 210, palette: palette),
-          _UsersHeaderCell('EMAIL', width: 260, palette: palette),
-          _UsersHeaderCell('ACTIONS', width: 170, palette: palette),
+          _UsersHeaderCell(lang.getText('user'), width: 260, palette: palette),
+          _UsersHeaderCell(lang.getText('role'), width: 180, palette: palette),
+          _UsersHeaderCell(lang.getText('status'), width: 140, palette: palette),
+          _UsersHeaderCell(lang.getText('lastSeen'), width: 210, palette: palette),
+          _UsersHeaderCell(lang.getText('emailLabel'), width: 260, palette: palette),
+          _UsersHeaderCell(lang.getText('actions'), width: 170, palette: palette),
         ],
       ),
     );
@@ -745,6 +775,7 @@ class _UsersTableRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<LanguageProvider>();
     final role = _normalizedRole(user);
     final accent = _roleColor(role);
     return Container(
@@ -769,7 +800,7 @@ class _UsersTableRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        user.name.isEmpty ? 'User' : user.name,
+                        user.name.isEmpty ? lang.getText('user') : user.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -810,7 +841,7 @@ class _UsersTableRow extends StatelessWidget {
                     size: 15, color: palette.textMuted),
                 const SizedBox(width: 7),
                 Text(
-                  _lastActive(index),
+                  _lastActive(context, index),
                   style: TextStyle(
                     color: palette.textPrimary,
                     fontWeight: FontWeight.w700,
@@ -842,7 +873,7 @@ class _UsersTableRow extends StatelessWidget {
                   icon: Icons.visibility_outlined,
                   color: palette.blue,
                   palette: palette,
-                  tooltip: 'Details',
+                  tooltip: lang.getText('details'),
                   onPressed: () => onDetails(user),
                 ),
                 const SizedBox(width: 8),
@@ -850,7 +881,7 @@ class _UsersTableRow extends StatelessWidget {
                   icon: Icons.edit_rounded,
                   color: palette.blue,
                   palette: palette,
-                  tooltip: 'Edit',
+                  tooltip: lang.getText('edit'),
                   onPressed: () => onEdit(user),
                 ),
                 const SizedBox(width: 8),
@@ -858,7 +889,7 @@ class _UsersTableRow extends StatelessWidget {
                   icon: Icons.delete_outline_rounded,
                   color: const Color(0xFFFF3B43),
                   palette: palette,
-                  tooltip: 'Delete',
+                  tooltip: lang.getText('delete'),
                   onPressed: () => onDelete(user),
                 ),
               ],
@@ -893,12 +924,13 @@ class _UsersTableRow extends StatelessWidget {
     return const Color(0xFF168BFF);
   }
 
-  static String _lastActive(int index) {
-    const values = [
-      'Today, 08:42 AM',
-      'Today, 07:15 AM',
-      'Yesterday, 11:32 PM',
-      'Yesterday, 09:20 PM',
+  static String _lastActive(BuildContext context, int index) {
+    final lang = context.read<LanguageProvider>();
+    final values = [
+      '${lang.getText('today')}, 08:42 AM',
+      '${lang.getText('today')}, 07:15 AM',
+      '${lang.getText('yesterday')}, 11:32 PM',
+      '${lang.getText('yesterday')}, 09:20 PM',
       'May 20, 2025, 04:10 PM',
     ];
     return values[index % values.length];
@@ -958,6 +990,7 @@ class _RolePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<LanguageProvider>();
     return Container(
       constraints: const BoxConstraints(maxWidth: 118),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -973,7 +1006,7 @@ class _RolePill extends StatelessWidget {
           const SizedBox(width: 6),
           Flexible(
             child: Text(
-              role,
+              _localizedUserRole(role, lang),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -1004,6 +1037,7 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<LanguageProvider>();
     const green = Color(0xFF19D389);
     return Container(
       width: 72,
@@ -1012,14 +1046,14 @@ class _StatusPill extends StatelessWidget {
         color: green.withValues(alpha: palette.isDark ? 0.17 : 0.10),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.circle, color: green, size: 7),
-          SizedBox(width: 5),
+          const Icon(Icons.circle, color: green, size: 7),
+          const SizedBox(width: 5),
           Text(
-            'Active',
-            style: TextStyle(
+            lang.getText('active'),
+            style: const TextStyle(
               color: green,
               fontSize: 11,
               fontWeight: FontWeight.w900,
@@ -1119,6 +1153,7 @@ class _UsersFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<LanguageProvider>();
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 760;
@@ -1128,7 +1163,9 @@ class _UsersFooter extends StatelessWidget {
             Icon(Icons.groups_rounded, color: palette.blue, size: 16),
             const SizedBox(width: 8),
             Text(
-              'Total Users: $totalUsers',
+              lang
+                  .getText('totalUsers')
+                  .replaceAll('{count}', totalUsers.toString()),
               style: TextStyle(
                 color: palette.textPrimary,
                 fontWeight: FontWeight.w700,
