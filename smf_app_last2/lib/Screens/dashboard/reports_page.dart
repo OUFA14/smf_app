@@ -1,12 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../services/reports_service.dart';
+import '../../models/report_metrics.dart';
+import '../../models/recent_report.dart';
+import '../../providers/language_provider.dart';
 
 class ReportsPage extends StatelessWidget {
   final dynamic palette;
-
+  ReportMetrics? _metrics;
+  List<RecentReport> _recentReports = [];
+  bool _isLoading = true;
   const ReportsPage({super.key, required this.palette});
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+  return const Center(child: CircularProgressIndicator());
+}
+    final lang = context.watch<LanguageProvider>();
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
@@ -35,32 +46,32 @@ class ReportsPage extends StatelessWidget {
                 crossAxisSpacing: 20,
                 mainAxisSpacing: 20,
                 childAspectRatio: metricRatio,
-                children: const [
+                children: [
                   _MetricCard(
-                    label: 'Incident Reports',
-                    value: '128',
-                    subtitle: 'Generated this month',
+                    label: lang.getText('incidentReports'),
+                    value: _metrics?.incidentReports.toString() ?? '128',
+                    subtitle: lang.getText('generatedThisMonth'),
                     icon: Icons.description_outlined,
                     color: Color(0xFF38BDF8),
                   ),
                   _MetricCard(
-                    label: 'Compliance Score',
-                    value: '96%',
-                    subtitle: 'Site safety readiness',
+                    label: lang.getText('complianceScore'),
+                    value: '${_metrics?.complianceScore ?? 96}%',
+                    subtitle: lang.getText('siteSafetyReadiness'),
                     icon: Icons.verified_user_outlined,
                     color: Color(0xFF22C55E),
                   ),
                   _MetricCard(
-                    label: 'Pending Exports',
-                    value: '07',
-                    subtitle: 'Awaiting manager review',
+                    label: lang.getText('pendingExports'),
+                    value: '${_metrics?.pendingExports ?? 7}'.padLeft(2, '0'),
+                    subtitle: lang.getText('awaitingManagerReview'),
                     icon: Icons.outbox_outlined,
                     color: Color(0xFFFBBF24),
                   ),
                   _MetricCard(
-                    label: 'Critical Findings',
-                    value: '04',
-                    subtitle: 'Require escalation',
+                    label: lang.getText('criticalFindings'),
+                    value: '${_metrics?.criticalFindings ?? 4}',
+                    subtitle: lang.getText('requireEscalation'),
                     icon: Icons.report_gmailerrorred_rounded,
                     color: Color(0xFFEF4444),
                   ),
@@ -103,7 +114,24 @@ class _Header extends StatelessWidget {
   const _Header({required this.palette});
 
   @override
+    Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    try {
+      final results = await Future.wait([
+        ReportsService().getMetrics(),
+        ReportsService().getRecentReports(),
+      ]);
+      setState(() {
+        _metrics = results[0] as ReportMetrics;
+        _recentReports = results[1] as List<RecentReport>;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+    }
+  }
   Widget build(BuildContext context) {
+    final lang = context.watch<LanguageProvider>();
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -153,7 +181,7 @@ class _Header extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Reports',
+                  lang.getText('reports'),
                   style: TextStyle(
                     color: palette.textPrimary,
                     fontSize: 34,
@@ -162,7 +190,7 @@ class _Header extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Operational summaries, compliance exports, and security reporting workspace.',
+                  lang.getText('reportsSubtitle'),
                   style: TextStyle(
                     color: palette.textMuted,
                     fontSize: 16,
@@ -180,13 +208,13 @@ class _Header extends StatelessWidget {
             child: ElevatedButton.icon(
               onPressed: () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Report generation endpoint not available.'),
+                  SnackBar(
+                    content: Text(lang.getText('reportEndpointUnavailable')),
                   ),
                 );
               },
               icon: const Icon(Icons.info_outline_rounded),
-              label: const Text('Generate Report'),
+              label: Text(lang.getText('generateReport')),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.transparent,
                 shadowColor: Colors.transparent,
@@ -321,23 +349,36 @@ class _ReportsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const reports = [
+    final lang = context.watch<LanguageProvider>();
+    final reports = [
       (
-        'Daily Operations Summary',
-        'Generated automatically at 06:00 AM',
-        'Ready'
+        lang.getText('dailyOperationsSummary'),
+        lang.getText('generatedAtMorning'),
+        lang.getText('ready')
       ),
       (
-        'Emergency Drill Audit',
-        'Prepared for site leadership review',
-        'Review'
+        lang.getText('emergencyDrillAudit'),
+        lang.getText('preparedForLeadership'),
+        lang.getText('review')
       ),
       (
-        'Device Health Snapshot',
-        'Tracks maintenance, uptime, and firmware coverage',
-        'Ready'
+        lang.getText('deviceHealthSnapshot'),
+        lang.getText('tracksMaintenance'),
+        lang.getText('ready')
       ),
     ];
+    final _fallbackReports = [
+  (lang.getText('dailyOperationsSummary'), lang.getText('generatedAtMorning'), lang.getText('ready')),
+  (lang.getText('emergencyDrillAudit'), lang.getText('preparedForLeadership'), lang.getText('review')),
+  (lang.getText('deviceHealthSnapshot'), lang.getText('tracksMaintenance'), lang.getText('ready')),
+];
+    final reports = _recentReports.isEmpty
+    ? _fallbackReports
+    : _recentReports.map((report) => (
+        report.name,
+        report.description,
+        report.status,
+      )).toList();
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -350,7 +391,7 @@ class _ReportsList extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Recent Reports',
+            lang.getText('recentReports'),
             style: TextStyle(
               color: palette.textPrimary,
               fontSize: 22,
@@ -460,6 +501,7 @@ class _ExportPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<LanguageProvider>();
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -471,7 +513,7 @@ class _ExportPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Export Center',
+            lang.getText('exportCenter'),
             style: TextStyle(
               color: palette.textPrimary,
               fontSize: 22,
@@ -480,30 +522,28 @@ class _ExportPanel extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'Prepare executive-ready summaries for security leadership, compliance teams, and site operations.',
+            lang.getText('exportCenterDesc'),
             style: TextStyle(color: palette.textMuted, height: 1.5),
           ),
           const SizedBox(height: 18),
           _ActionTile(
             palette: palette,
-            title: 'Executive Snapshot',
-            subtitle: 'Security posture, live risks, and priority responses.',
+            title: lang.getText('executiveSnapshot'),
+            subtitle: lang.getText('executiveSnapshotDesc'),
             icon: Icons.insights_outlined,
           ),
           const SizedBox(height: 12),
           _ActionTile(
             palette: palette,
-            title: 'Compliance Bundle',
-            subtitle:
-                'Incident traceability, audits, and maintenance evidence.',
+            title: lang.getText('complianceBundle'),
+            subtitle: lang.getText('complianceBundleDesc'),
             icon: Icons.fact_check_outlined,
           ),
           const SizedBox(height: 12),
           _ActionTile(
             palette: palette,
-            title: 'Field Operations Pack',
-            subtitle:
-                'Worker activity, zone movement, and alert response summaries.',
+            title: lang.getText('fieldOperationsPack'),
+            subtitle: lang.getText('fieldOperationsPackDesc'),
             icon: Icons.route_outlined,
           ),
         ],
