@@ -158,6 +158,20 @@ class ApiService {
 
     return _parseResponse(response);
   }
+  Future<ApiResponse<dynamic>> patch(
+  String path, {
+  Map<String, String>? headers,
+  Object? body,
+  String? accessToken,
+}) {
+  return _send(
+    method: 'PATCH',
+    path: path,
+    headers: headers,
+    body: body,
+    accessToken: accessToken,
+  );
+}
 
   Future<http.Response> _sendHttpRequest({
     required String method,
