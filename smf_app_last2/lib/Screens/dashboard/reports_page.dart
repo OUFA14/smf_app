@@ -10,7 +10,7 @@ class ReportsPage extends StatelessWidget {
   ReportMetrics? _metrics;
   List<RecentReport> _recentReports = [];
   bool _isLoading = true;
-  const ReportsPage({super.key, required this.palette});
+ ReportsPage({super.key, required this.palette});
 
   @override
   Widget build(BuildContext context) {
