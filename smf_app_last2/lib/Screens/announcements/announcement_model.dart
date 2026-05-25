@@ -1,5 +1,6 @@
 class AnnouncementModel {
   final String title;
+  final String id;
   final String message;
   final String priority;
   final String sender;
@@ -8,6 +9,7 @@ class AnnouncementModel {
 
   AnnouncementModel({
     required this.title,
+    required this.id,
     required this.message,
     required this.priority,
     required this.sender,
@@ -17,6 +19,7 @@ class AnnouncementModel {
 
   AnnouncementModel copyWith({
     String? title,
+    id: json['id']?.toString() ?? '',
     String? message,
     String? priority,
     String? sender,
@@ -25,6 +28,7 @@ class AnnouncementModel {
   }) {
     return AnnouncementModel(
       title: title ?? this.title,
+      'id': id,
       message: message ?? this.message,
       priority: priority ?? this.priority,
       sender: sender ?? this.sender,
