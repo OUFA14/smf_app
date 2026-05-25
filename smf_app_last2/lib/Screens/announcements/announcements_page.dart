@@ -282,13 +282,7 @@ Future<void> _loadAnnouncements() async {
   }
 }
 
-_AnnouncementVisual _getVisualByPriority(String priority) {
-  switch (priority.toLowerCase()) {
-    case 'high': return _AnnouncementVisual.sos;
-    case 'medium': return _AnnouncementVisual.update;
-    default: return _AnnouncementVisual.worker;
-  }
-}
+
 
   String _timeAgo(DateTime timestamp) {
     final diff = DateTime.now().difference(timestamp);
