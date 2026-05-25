@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
-
+import '../../models/user_stats.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,6 +14,7 @@ import '../../services/events_service.dart';
 import '../../services/users_service.dart';
 import '../../services/zones_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/navigation_helper.dart';
 import 'logout_dialog.dart';
 import 'personal_info_page.dart';
 import 'profile_image_picker.dart';
@@ -31,11 +32,15 @@ class _ProfilePageState extends State<ProfilePage> {
   final ZonesService _zonesService = ZonesService();
   final EventsService _eventsService = EventsService();
   static const _profileImageKey = 'profile_image_url';
+  static const _profileDisplayNameKey = 'profile_display_name';
   static const _firstActiveAtKey = 'profile_first_active_at';
   static const _notificationSettingsKey = 'profile_notification_settings';
   static const _reportsGeneratedCount = 3;
   User? _currentUser;
   String? _profileImageUrl;
+  String? _profileDisplayName;
+    UserStats? _userStats;
+  bool _isLoadingStats = true;
   int _alertsHandled = MockMonitoringData.alerts
       .where((alert) => alert.status.toLowerCase() != 'open')
       .length;
@@ -57,9 +62,11 @@ class _ProfilePageState extends State<ProfilePage> {
     super.initState();
     _loadCurrentUser();
     _loadProfileImage();
+    _loadProfileDisplayName();
     _loadPreferences();
     _loadProfileStats();
     _loadRecentActivity();
+    _loadUserStats();
   }
 
   Future<void> _loadPreferences() async {
@@ -94,6 +101,12 @@ class _ProfilePageState extends State<ProfilePage> {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() => _profileImageUrl = prefs.getString(_profileImageKey));
+  }
+
+  Future<void> _loadProfileDisplayName() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() => _profileDisplayName = prefs.getString(_profileDisplayNameKey));
   }
 
   Future<void> _loadProfileStats() async {
@@ -142,6 +155,29 @@ class _ProfilePageState extends State<ProfilePage> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _recentActivities = const []);
+    }
+  }
+    Future<void> _loadUserStats() async {
+    final userId = AuthService.instance.userId;
+    if (userId == null || userId.isEmpty) {
+      setState(() => _isLoadingStats = false);
+      return;
+    }
+
+    try {
+      final stats = await _usersService.getUserStats(userId);
+      if (!mounted) return;
+      setState(() {
+        _userStats = stats;
+        _alertsHandled = stats.alertsHandled;
+        _zonesMonitored = stats.zonesMonitored;
+        _reportsGenerated = stats.reportsGenerated;
+        _daysActive = stats.daysActive;
+        _isLoadingStats = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoadingStats = false);
     }
   }
 
@@ -234,7 +270,7 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     } catch (_) {
       if (!mounted) return;
-      setState(() => _currentUser = null);
+      setState(() => _currentUser = _fallbackUser);
     }
   }
 
@@ -255,7 +291,10 @@ class _ProfilePageState extends State<ProfilePage> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const PersonalInfoPage()),
-    ).then((_) => _loadCurrentUser());
+    ).then((_) {
+      _loadCurrentUser();
+      _loadProfileDisplayName();
+    });
   }
 
   Future<void> _openAvatarPicker() async {
@@ -344,10 +383,10 @@ class _ProfilePageState extends State<ProfilePage> {
 
   User get _fallbackUser => const User(
         id: '',
-        name: '',
-        email: '',
-        role: '',
-        roles: [''],
+        name: 'Admin User',
+        email: 'admin@smf.com',
+        role: 'ADMIN',
+        roles: ['ADMIN'],
       );
 
   @override
@@ -362,10 +401,12 @@ class _ProfilePageState extends State<ProfilePage> {
     final shellPadding = size.width >= 760 ? 28.0 : 16.0;
     final currentUser = _currentUser ?? _fallbackUser;
 
-    return Directionality(
-      textDirection:
-          languageProvider.isArabic ? TextDirection.rtl : TextDirection.ltr,
-      child: Scaffold(
+    return WillPopScope(
+      onWillPop: () => AppNavigation.handleSystemBack(context),
+      child: Directionality(
+        textDirection:
+            languageProvider.isArabic ? TextDirection.rtl : TextDirection.ltr,
+        child: Scaffold(
         backgroundColor: palette.background,
         body: AnimatedContainer(
           duration: const Duration(milliseconds: 320),
@@ -399,17 +440,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     _TitleArea(
                       palette: palette,
                       title: languageProvider.getText('profile'),
-                      subtitle: 'Manage your account and preferences.',
-                      onBack: () {
-                        if (Navigator.canPop(context)) {
-                          Navigator.pop(context);
-                        } else {
-                          Navigator.pushReplacementNamed(
-                            context,
-                            '/dashboard',
-                          );
-                        }
-                      },
+                      subtitle: languageProvider.getText('profileSubtitle'),
+                      onBack: () => AppNavigation.goBack(context),
                     ),
                     const SizedBox(height: 22),
                     if (isDesktop)
@@ -422,6 +454,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               palette: palette,
                               languageProvider: languageProvider,
                               user: currentUser,
+                              profileDisplayName: _profileDisplayName,
                               imageUrl: _profileImageUrl,
                               alertsHandled: _alertsHandled,
                               zonesMonitored: _zonesMonitored,
@@ -438,6 +471,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               palette: palette,
                               languageProvider: languageProvider,
                               onOpenPanel: _openSettingsPanel,
+                              onProfileChanged: _loadProfileDisplayName,
                             ),
                           ),
                           const SizedBox(width: 18),
@@ -462,6 +496,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                   palette: palette,
                                   languageProvider: languageProvider,
                                   user: currentUser,
+                                  profileDisplayName: _profileDisplayName,
                                   imageUrl: _profileImageUrl,
                                   alertsHandled: _alertsHandled,
                                   zonesMonitored: _zonesMonitored,
@@ -485,6 +520,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               palette: palette,
                               languageProvider: languageProvider,
                               onOpenPanel: _openSettingsPanel,
+                              onProfileChanged: _loadProfileDisplayName,
                             ),
                           ),
                         ],
@@ -496,6 +532,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             palette: palette,
                             languageProvider: languageProvider,
                             user: currentUser,
+                            profileDisplayName: _profileDisplayName,
                             imageUrl: _profileImageUrl,
                             alertsHandled: _alertsHandled,
                             zonesMonitored: _zonesMonitored,
@@ -509,6 +546,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             palette: palette,
                             languageProvider: languageProvider,
                             onOpenPanel: _openSettingsPanel,
+                            onProfileChanged: _loadProfileDisplayName,
                           ),
                           const SizedBox(height: 18),
                           _RightColumn(
@@ -533,6 +571,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             ),
           ),
+        ),
         ),
       ),
     );
@@ -575,7 +614,10 @@ class _HeaderBar extends StatelessWidget {
               ),
             ],
           ),
-          child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+          child: Image.asset(
+            'assets/images/logo_smf_clear.png',
+            fit: BoxFit.contain,
+          ),
         ),
         const SizedBox(width: 14),
         Flexible(
@@ -591,7 +633,7 @@ class _HeaderBar extends StatelessWidget {
                 ),
               ),
               Text(
-                'Smooth Monitoring & Fortification',
+                languageProvider.getText('smfProjectName'),
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: palette.secondaryText,
@@ -605,39 +647,11 @@ class _HeaderBar extends StatelessWidget {
       ],
     );
 
-    final controls = Wrap(
-      alignment: WrapAlignment.end,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 14,
-      runSpacing: 12,
-      children: [
-        _LanguageToggle(
-          palette: palette,
-          isArabic: languageProvider.isArabic,
-          onTap: languageProvider.toggleLanguage,
-        ),
-        _ThemeToggle(
-          palette: palette,
-          isDark: themeProvider.isDarkMode,
-          onTap: themeProvider.toggleTheme,
-        ),
-        _NotificationButton(
-          palette: palette,
-          onTap: onNotificationsTap,
-          count: notificationCount,
-        ),
-      ],
-    );
-
     if (compact) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           brand,
-          const SizedBox(height: 18),
-          Center(child: _PriorityPill(palette: palette)),
-          const SizedBox(height: 18),
-          Align(alignment: Alignment.centerRight, child: controls),
         ],
       );
     }
@@ -645,9 +659,6 @@ class _HeaderBar extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: brand),
-        _PriorityPill(palette: palette),
-        Expanded(
-            child: Align(alignment: Alignment.centerRight, child: controls)),
       ],
     );
   }
@@ -657,6 +668,7 @@ class _ProfileCard extends StatelessWidget {
   final _ProfilePalette palette;
   final LanguageProvider languageProvider;
   final User user;
+  final String? profileDisplayName;
   final String? imageUrl;
   final int alertsHandled;
   final int zonesMonitored;
@@ -669,6 +681,7 @@ class _ProfileCard extends StatelessWidget {
     required this.palette,
     required this.languageProvider,
     required this.user,
+    required this.profileDisplayName,
     required this.imageUrl,
     required this.alertsHandled,
     required this.zonesMonitored,
@@ -680,8 +693,11 @@ class _ProfileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final displayName = _profileDisplayName(user);
-    final roleLabel = _profileRole(user);
+    final savedName = profileDisplayName?.trim();
+    final displayName = savedName != null && savedName.isNotEmpty
+        ? savedName
+        : _profileDisplayName(user, languageProvider);
+    final roleLabel = _localizedProfileRole(user, languageProvider);
     final idLabel = _profileId(user);
 
     return _GlowCard(
@@ -799,12 +815,14 @@ class _ProfileCard extends StatelessWidget {
   }
 }
 
-String _profileDisplayName(User user) {
+String _profileDisplayName(User user, LanguageProvider lang) {
   final name = user.name.trim();
   if (name.isNotEmpty) return name;
   final email = user.email.trim();
   if (email.isNotEmpty) return email.split('@').first;
-  return _profileRole(user) == 'ADMIN' ? 'Admin User' : 'Current User';
+  return _profileRole(user) == 'ADMIN'
+      ? lang.getText('roleAdmin')
+      : lang.getText('user');
 }
 
 String _profileRole(User user) {
@@ -815,6 +833,24 @@ String _profileRole(User user) {
   if (roles.any((role) => role.toUpperCase() == 'ADMIN')) return 'ADMIN';
   final role = (user.role ?? '').trim().replaceFirst(RegExp(r'^ROLE_'), '');
   return role.isEmpty ? 'System User' : role.toUpperCase();
+}
+
+String _localizedProfileRole(User user, LanguageProvider lang) {
+  switch (_profileRole(user).toUpperCase()) {
+    case 'ADMIN':
+      return lang.getText('roleAdmin');
+    case 'ENGINEER':
+      return lang.getText('roleEngineer');
+    case 'MANAGER':
+      return lang.getText('roleManager');
+    case 'WORKER':
+      return lang.getText('roleWorker');
+    case 'USER':
+    case 'ROLE_USER':
+      return lang.getText('roleUser');
+    default:
+      return lang.getText('user');
+  }
 }
 
 String _profileId(User user) {
@@ -828,11 +864,13 @@ class _SettingsColumn extends StatelessWidget {
   final _ProfilePalette palette;
   final LanguageProvider languageProvider;
   final ValueChanged<_ProfilePanel> onOpenPanel;
+  final VoidCallback onProfileChanged;
 
   const _SettingsColumn({
     required this.palette,
     required this.languageProvider,
     required this.onOpenPanel,
+    required this.onProfileChanged,
   });
 
   @override
@@ -848,7 +886,7 @@ class _SettingsColumn extends StatelessWidget {
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const PersonalInfoPage()),
-          ),
+          ).then((_) => onProfileChanged()),
         ),
         const SizedBox(height: 14),
         _SettingsOptionCard(
@@ -1052,13 +1090,14 @@ class _AccountStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final languageProvider = context.watch<LanguageProvider>();
     return _GlowCard(
       palette: palette,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Account Status',
+            languageProvider.getText('accountStatus'),
             style: TextStyle(
               color: palette.primaryText,
               fontSize: 18,
@@ -1068,8 +1107,8 @@ class _AccountStatusCard extends StatelessWidget {
           const SizedBox(height: 18),
           _StatusPill(
             palette: palette,
-            label: 'Active',
-            value: 'Verified',
+            label: languageProvider.getText('active'),
+            value: languageProvider.getText('verified'),
             icon: Icons.verified_user_rounded,
             color: _ProfileColors.green,
           ),
@@ -1077,22 +1116,79 @@ class _AccountStatusCard extends StatelessWidget {
           _InfoRow(
             palette: palette,
             icon: Icons.access_time_rounded,
-            label: 'Last Login',
-            value: 'Today, 08:42 AM',
+            label: languageProvider.getText('lastLogin'),
+            value: _localizedProfileDateTime(languageProvider, DateTime.now()),
             color: _ProfileColors.purple,
           ),
           const SizedBox(height: 14),
           _InfoRow(
             palette: palette,
             icon: Icons.calendar_month_rounded,
-            label: 'Member Since',
-            value: 'Jan 12, 2024',
+            label: languageProvider.getText('memberSince'),
+            value: _localizedProfileDate(
+              languageProvider,
+              DateTime(2025, 1, 12),
+            ),
             color: _ProfileColors.purple,
           ),
         ],
       ),
     );
   }
+}
+
+String _localizedProfileDateTime(LanguageProvider lang, DateTime value) {
+  final local = value.toLocal();
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${_localizedWeekday(lang, local.weekday)}, ${_localizedProfileDate(lang, local)} $hour:$minute';
+}
+
+String _localizedProfileDate(LanguageProvider lang, DateTime value) {
+  final local = value.toLocal();
+  if (lang.isArabic) {
+    return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+  }
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${months[local.month - 1]} ${local.day}, ${local.year}';
+}
+
+String _localizedWeekday(LanguageProvider lang, int weekday) {
+  if (lang.isArabic) {
+    const days = [
+      'الاثنين',
+      'الثلاثاء',
+      'الأربعاء',
+      'الخميس',
+      'الجمعة',
+      'السبت',
+      'الأحد',
+    ];
+    return days[weekday - 1];
+  }
+  const days = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+  return days[weekday - 1];
 }
 
 class _RecentActivityCard extends StatelessWidget {
@@ -1108,6 +1204,7 @@ class _RecentActivityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+      final languageProvider = context.watch<LanguageProvider>();
     return _GlowCard(
       palette: palette,
       child: Column(
@@ -1117,7 +1214,7 @@ class _RecentActivityCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Recent Activity',
+                  languageProvider.getText('recentActivity'),
                   style: TextStyle(
                     color: palette.primaryText,
                     fontSize: 18,
@@ -1127,9 +1224,9 @@ class _RecentActivityCard extends StatelessWidget {
               ),
               TextButton(
                 onPressed: onViewAll,
-                child: const Text(
-                  'View all',
-                  style: TextStyle(
+                child: Text(
+                  languageProvider.getText('viewAll'),
+                  style: const TextStyle(
                     color: _ProfileColors.blue,
                     fontWeight: FontWeight.w800,
                   ),
@@ -1160,6 +1257,7 @@ class _EmptyActivityState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final languageProvider = context.watch<LanguageProvider>();
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -1169,7 +1267,7 @@ class _EmptyActivityState extends StatelessWidget {
         border: Border.all(color: palette.cardBorder),
       ),
       child: Text(
-        'No recent system activity found.',
+        languageProvider.getText('noRecentActivity'),
         style: TextStyle(
           color: palette.mutedText,
           fontWeight: FontWeight.w700,
@@ -1308,286 +1406,6 @@ class _GlowCard extends StatelessWidget {
         ],
       ),
       child: child,
-    );
-  }
-}
-
-class _PriorityPill extends StatelessWidget {
-  final _ProfilePalette palette;
-
-  const _PriorityPill({required this.palette});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 340),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        color: palette.controlFill,
-        border: Border.all(color: palette.controlBorder),
-        boxShadow: [
-          BoxShadow(
-            color:
-                _ProfileColors.blue.withOpacity(palette.isDark ? 0.14 : 0.08),
-            blurRadius: 20,
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.max,
-        children: [
-          const _GreenDot(),
-          const SizedBox(width: 14),
-          const Icon(
-            Icons.health_and_safety_rounded,
-            color: _ProfileColors.yellow,
-            size: 20,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Your safety is our priority',
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: palette.primaryText,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          const _GreenDot(),
-        ],
-      ),
-    );
-  }
-}
-
-class _LanguageToggle extends StatelessWidget {
-  final _ProfilePalette palette;
-  final bool isArabic;
-  final VoidCallback onTap;
-
-  const _LanguageToggle({
-    required this.palette,
-    required this.isArabic,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return _SegmentedShell(
-      palette: palette,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _Segment(
-            palette: palette,
-            label: 'EN',
-            active: !isArabic,
-            onTap: onTap,
-          ),
-          _Segment(
-            palette: palette,
-            label: 'AR',
-            active: isArabic,
-            onTap: onTap,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ThemeToggle extends StatelessWidget {
-  final _ProfilePalette palette;
-  final bool isDark;
-  final VoidCallback onTap;
-
-  const _ThemeToggle({
-    required this.palette,
-    required this.isDark,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return _SegmentedShell(
-      palette: palette,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _IconSegment(
-            palette: palette,
-            icon: Icons.wb_sunny_rounded,
-            active: !isDark,
-            onTap: onTap,
-          ),
-          _IconSegment(
-            palette: palette,
-            icon: Icons.dark_mode_rounded,
-            active: isDark,
-            onTap: onTap,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NotificationButton extends StatelessWidget {
-  final _ProfilePalette palette;
-  final VoidCallback onTap;
-  final int count;
-
-  const _NotificationButton({
-    required this.palette,
-    required this.onTap,
-    required this.count,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        _CircleButton(
-          palette: palette,
-          icon: Icons.notifications_none_rounded,
-          onTap: onTap,
-        ),
-        if (count > 0)
-          Positioned(
-            right: 2,
-            top: -3,
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: _ProfileColors.red,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: _ProfileColors.red.withOpacity(0.55),
-                    blurRadius: 12,
-                  ),
-                ],
-              ),
-              child: Text(
-                count > 9 ? '9+' : '$count',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _SegmentedShell extends StatelessWidget {
-  final _ProfilePalette palette;
-  final Widget child;
-
-  const _SegmentedShell({required this.palette, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(7),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        color: palette.controlFill,
-        border: Border.all(color: palette.controlBorder),
-      ),
-      child: child,
-    );
-  }
-}
-
-class _Segment extends StatelessWidget {
-  final _ProfilePalette palette;
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  const _Segment({
-    required this.palette,
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: active ? null : onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-        decoration: BoxDecoration(
-          color: active
-              ? _ProfileColors.blue.withOpacity(palette.isDark ? 0.30 : 0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
-          boxShadow: active
-              ? [
-                  BoxShadow(
-                    color: _ProfileColors.blue.withOpacity(0.16),
-                    blurRadius: 16,
-                  ),
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: active ? palette.primaryText : palette.mutedText,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _IconSegment extends StatelessWidget {
-  final _ProfilePalette palette;
-  final IconData icon;
-  final bool active;
-  final VoidCallback onTap;
-
-  const _IconSegment({
-    required this.palette,
-    required this.icon,
-    required this.active,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: active ? null : onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: 54,
-        height: 44,
-        decoration: BoxDecoration(
-          color: active
-              ? _ProfileColors.blue.withOpacity(palette.isDark ? 0.24 : 0.10)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Icon(
-          icon,
-          color: active ? _ProfileColors.yellow : palette.mutedText,
-        ),
-      ),
     );
   }
 }
@@ -2492,6 +2310,7 @@ class _StatsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final languageProvider = context.watch<LanguageProvider>();
     return LayoutBuilder(
       builder: (context, constraints) {
         final narrow = constraints.maxWidth < 360;
@@ -2499,33 +2318,33 @@ class _StatsGrid extends StatelessWidget {
           _StatCard(
             palette: palette,
             icon: Icons.notifications_active_rounded,
-            label: 'Alerts Handled',
+            label: languageProvider.getText('alertsHandled'),
             value: '$alertsHandled',
-            change: 'live',
+            change: languageProvider.getText('live'),
             color: _ProfileColors.cyan,
           ),
           _StatCard(
             palette: palette,
             icon: Icons.location_on_rounded,
-            label: 'Zones Monitored',
+            label: languageProvider.getText('zonesMonitored'),
             value: '$zonesMonitored',
-            change: 'live',
+            change: languageProvider.getText('live'),
             color: _ProfileColors.blue,
           ),
           _StatCard(
             palette: palette,
             icon: Icons.description_rounded,
-            label: 'Reports Generated',
+            label: languageProvider.getText('reportsGenerated'),
             value: '$reportsGenerated',
-            change: 'available',
+            change: languageProvider.getText('available'),
             color: _ProfileColors.purple,
           ),
           _StatCard(
             palette: palette,
             icon: Icons.calendar_month_rounded,
-            label: 'Days Active',
+            label: languageProvider.getText('daysActive'),
             value: '$daysActive',
-            change: 'tracked',
+            change: languageProvider.getText('tracked'),
             color: _ProfileColors.yellow,
           ),
         ];
@@ -2867,28 +2686,6 @@ class _TimelineItem extends StatelessWidget {
                 ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GreenDot extends StatelessWidget {
-  const _GreenDot();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(
-        color: _ProfileColors.green,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: _ProfileColors.green.withOpacity(0.75),
-            blurRadius: 10,
           ),
         ],
       ),
