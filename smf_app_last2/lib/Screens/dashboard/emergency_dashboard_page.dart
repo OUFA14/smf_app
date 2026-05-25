@@ -3,6 +3,13 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../../services/emergency_service.dart';
+import '../../models/emergency_status.dart';
+import '../../models/active_incident.dart';
+import '../../models/incident_feed.dart';
+import '../../models/emergency_personnel.dart';
+import '../../models/emergency_contact.dart';
+import '../../models/system_status.dart';
 import '../../theme/app_theme.dart';
 
 class EmergencyDashboardPage extends StatefulWidget {
@@ -16,6 +23,15 @@ class _EmergencyDashboardPageState extends State<EmergencyDashboardPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _pulseController;
 
+  // Emergency Data
+  EmergencyStatus? _emergencyStatus;
+  ActiveIncident? _activeIncident;
+  List<IncidentFeedItem> _incidentFeed = [];
+  List<EmergencyPersonnel> _personnel = [];
+  List<EmergencyContact> _contacts = [];
+  SystemStatus? _systemStatus;
+  bool _isLoading = true;
+
   @override
   void initState() {
     super.initState();
@@ -23,6 +39,33 @@ class _EmergencyDashboardPageState extends State<EmergencyDashboardPage>
       vsync: this,
       duration: const Duration(milliseconds: 1100),
     )..repeat(reverse: true);
+    _loadEmergencyData();
+  }
+
+  Future<void> _loadEmergencyData() async {
+    setState(() => _isLoading = true);
+    try {
+      final results = await Future.wait([
+        EmergencyService().getStatus(),
+        EmergencyService().getActiveIncident(),
+        EmergencyService().getIncidentFeed(),
+        EmergencyService().getPersonnel(),
+        EmergencyService().getContacts(),
+        EmergencyService().getSystemStatus(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _emergencyStatus = results[0] as EmergencyStatus;
+        _activeIncident = results[1] as ActiveIncident;
+        _incidentFeed = results[2] as List<IncidentFeedItem>;
+        _personnel = results[3] as List<EmergencyPersonnel>;
+        _contacts = results[4] as List<EmergencyContact>;
+        _systemStatus = results[5] as SystemStatus;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -33,6 +76,10 @@ class _EmergencyDashboardPageState extends State<EmergencyDashboardPage>
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     final palette = _EmergencyPalette(
       Theme.of(context).brightness == Brightness.dark,
     );
@@ -53,10 +100,22 @@ class _EmergencyDashboardPageState extends State<EmergencyDashboardPage>
                 ? _CompactEmergencyBody(
                     palette: palette,
                     pulseController: _pulseController,
+                    emergencyStatus: _emergencyStatus,
+                    activeIncident: _activeIncident,
+                    incidentFeed: _incidentFeed,
+                    personnel: _personnel,
+                    contacts: _contacts,
+                    systemStatus: _systemStatus,
                   )
                 : _DesktopEmergencyBody(
                     palette: palette,
                     pulseController: _pulseController,
+                    emergencyStatus: _emergencyStatus,
+                    activeIncident: _activeIncident,
+                    incidentFeed: _incidentFeed,
+                    personnel: _personnel,
+                    contacts: _contacts,
+                    systemStatus: _systemStatus,
                   ),
           );
         },
@@ -68,10 +127,22 @@ class _EmergencyDashboardPageState extends State<EmergencyDashboardPage>
 class _DesktopEmergencyBody extends StatelessWidget {
   final _EmergencyPalette palette;
   final AnimationController pulseController;
+  final EmergencyStatus? emergencyStatus;
+  final ActiveIncident? activeIncident;
+  final List<IncidentFeedItem> incidentFeed;
+  final List<EmergencyPersonnel> personnel;
+  final List<EmergencyContact> contacts;
+  final SystemStatus? systemStatus;
 
   const _DesktopEmergencyBody({
     required this.palette,
     required this.pulseController,
+    required this.emergencyStatus,
+    required this.activeIncident,
+    required this.incidentFeed,
+    required this.personnel,
+    required this.contacts,
+    required this.systemStatus,
   });
 
   @override
@@ -82,9 +153,13 @@ class _DesktopEmergencyBody extends StatelessWidget {
           _EmergencyBanner(
             palette: palette,
             pulseController: pulseController,
+            emergencyStatus: emergencyStatus,
           ),
           const SizedBox(height: 18),
-          _StatsRow(palette: palette),
+          _StatsRow(
+            palette: palette,
+            emergencyStatus: emergencyStatus,
+          ),
           const SizedBox(height: 18),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -103,14 +178,20 @@ class _DesktopEmergencyBody extends StatelessWidget {
                         Expanded(
                           child: SizedBox(
                             height: 220,
-                            child: _PersonnelCard(palette: palette),
+                            child: _PersonnelCard(
+                              palette: palette,
+                              personnel: personnel,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 18),
                         Expanded(
                           child: SizedBox(
                             height: 220,
-                            child: _ContactsCard(palette: palette),
+                            child: _ContactsCard(
+                              palette: palette,
+                              contacts: contacts,
+                            ),
                           ),
                         ),
                       ],
@@ -125,12 +206,18 @@ class _DesktopEmergencyBody extends StatelessWidget {
                   children: [
                     SizedBox(
                       height: 260,
-                      child: _ActiveIncidentCard(palette: palette),
+                      child: _ActiveIncidentCard(
+                        palette: palette,
+                        activeIncident: activeIncident,
+                      ),
                     ),
                     const SizedBox(height: 18),
                     SizedBox(
                       height: 250,
-                      child: _IncidentFeedCard(palette: palette),
+                      child: _IncidentFeedCard(
+                        palette: palette,
+                        incidentFeed: incidentFeed,
+                      ),
                     ),
                   ],
                 ),
@@ -138,7 +225,10 @@ class _DesktopEmergencyBody extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
-          _SystemStrip(palette: palette),
+          _SystemStrip(
+            palette: palette,
+            systemStatus: systemStatus,
+          ),
         ],
       ),
     );
@@ -148,10 +238,22 @@ class _DesktopEmergencyBody extends StatelessWidget {
 class _CompactEmergencyBody extends StatelessWidget {
   final _EmergencyPalette palette;
   final AnimationController pulseController;
+  final EmergencyStatus? emergencyStatus;
+  final ActiveIncident? activeIncident;
+  final List<IncidentFeedItem> incidentFeed;
+  final List<EmergencyPersonnel> personnel;
+  final List<EmergencyContact> contacts;
+  final SystemStatus? systemStatus;
 
   const _CompactEmergencyBody({
     required this.palette,
     required this.pulseController,
+    required this.emergencyStatus,
+    required this.activeIncident,
+    required this.incidentFeed,
+    required this.personnel,
+    required this.contacts,
+    required this.systemStatus,
   });
 
   @override
@@ -162,21 +264,52 @@ class _CompactEmergencyBody extends StatelessWidget {
           _EmergencyBanner(
             palette: palette,
             pulseController: pulseController,
+            emergencyStatus: emergencyStatus,
           ),
           const SizedBox(height: 14),
-          _StatsRow(palette: palette),
+          _StatsRow(
+            palette: palette,
+            emergencyStatus: emergencyStatus,
+          ),
           const SizedBox(height: 14),
           SizedBox(height: 250, child: _LiveMapCard(palette: palette)),
           const SizedBox(height: 14),
-          SizedBox(height: 280, child: _ActiveIncidentCard(palette: palette)),
+          SizedBox(
+            height: 280,
+            child: _ActiveIncidentCard(
+              palette: palette,
+              activeIncident: activeIncident,
+            ),
+          ),
           const SizedBox(height: 14),
-          SizedBox(height: 230, child: _IncidentFeedCard(palette: palette)),
+          SizedBox(
+            height: 230,
+            child: _IncidentFeedCard(
+              palette: palette,
+              incidentFeed: incidentFeed,
+            ),
+          ),
           const SizedBox(height: 14),
-          SizedBox(height: 220, child: _PersonnelCard(palette: palette)),
+          SizedBox(
+            height: 220,
+            child: _PersonnelCard(
+              palette: palette,
+              personnel: personnel,
+            ),
+          ),
           const SizedBox(height: 14),
-          SizedBox(height: 220, child: _ContactsCard(palette: palette)),
+          SizedBox(
+            height: 220,
+            child: _ContactsCard(
+              palette: palette,
+              contacts: contacts,
+            ),
+          ),
           const SizedBox(height: 14),
-          _SystemStrip(palette: palette),
+          _SystemStrip(
+            palette: palette,
+            systemStatus: systemStatus,
+          ),
         ],
       ),
     );
@@ -186,14 +319,20 @@ class _CompactEmergencyBody extends StatelessWidget {
 class _EmergencyBanner extends StatelessWidget {
   final _EmergencyPalette palette;
   final AnimationController pulseController;
+  final EmergencyStatus? emergencyStatus;
 
   const _EmergencyBanner({
     required this.palette,
     required this.pulseController,
+    required this.emergencyStatus,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isActive = emergencyStatus?.mode == 'ACTIVE';
+    final level = emergencyStatus?.level ?? 1;
+    final timeElapsed = emergencyStatus?.timeElapsed ?? '00:00';
+
     return AnimatedBuilder(
       animation: pulseController,
       builder: (context, _) {
@@ -226,8 +365,7 @@ class _EmergencyBanner extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: palette.red.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(10),
-                  border:
-                      Border.all(color: palette.red.withValues(alpha: 0.85)),
+                  border: Border.all(color: palette.red.withValues(alpha: 0.85)),
                 ),
                 child: Icon(Icons.warning_amber_rounded,
                     color: palette.redHot, size: 30),
@@ -240,7 +378,7 @@ class _EmergencyBanner extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'EMERGENCY MODE ACTIVE',
+                      isActive ? 'EMERGENCY MODE ACTIVE' : 'NORMAL MODE',
                       style: TextStyle(
                         color: palette.text,
                         fontSize: 16,
@@ -249,7 +387,9 @@ class _EmergencyBanner extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Alert Level 2   •   Teams Notified',
+                      isActive
+                          ? 'Alert Level $level   •   Teams Notified'
+                          : 'Monitoring Mode   •   All Systems Normal',
                       style: TextStyle(color: palette.muted, fontSize: 12),
                     ),
                   ],
@@ -273,7 +413,7 @@ class _EmergencyBanner extends StatelessWidget {
                   Text('Time Elapsed',
                       style: TextStyle(color: palette.muted, fontSize: 10)),
                   Text(
-                    '02:34',
+                    timeElapsed,
                     style: TextStyle(
                       color: palette.text,
                       fontSize: 22,
@@ -297,11 +437,20 @@ class _EmergencyBanner extends StatelessWidget {
 
 class _StatsRow extends StatelessWidget {
   final _EmergencyPalette palette;
+  final EmergencyStatus? emergencyStatus;
 
-  const _StatsRow({required this.palette});
+  const _StatsRow({
+    required this.palette,
+    required this.emergencyStatus,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final zone = emergencyStatus?.zone ?? 'Zone 1';
+    final responseTime = emergencyStatus?.responseTime ?? '2:34';
+    final unitsDeployed = emergencyStatus?.unitsDeployed ?? 5;
+    final status = emergencyStatus?.status ?? 'ACTIVE';
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = constraints.maxWidth >= 900
@@ -313,14 +462,13 @@ class _StatsRow extends StatelessWidget {
         final itemWidth =
             (constraints.maxWidth - spacing * (columns - 1)) / columns;
         final cards = [
-          _StatSpec(
-              'Zone', 'Zone 1', 'Location', LucideIcons.mapPin, palette.blue),
-          _StatSpec('Response Time', '2:34', 'Minutes', LucideIcons.clock,
+          _StatSpec('Zone', zone, 'Location', LucideIcons.mapPin, palette.blue),
+          _StatSpec('Response Time', responseTime, 'Minutes', LucideIcons.clock,
               palette.blue),
-          _StatSpec('Units Deployed', '5 Units', 'Nearby', LucideIcons.users,
+          _StatSpec('Units Deployed', '$unitsDeployed Units', 'Nearby', LucideIcons.users,
               palette.blue),
-          _StatSpec('Status', 'ACTIVE', 'All Systems Operational',
-              LucideIcons.radio, palette.red),
+          _StatSpec('Status', status, 'All Systems Operational',
+              LucideIcons.radio, status == 'ACTIVE' ? palette.red : palette.green),
         ];
         return Wrap(
           spacing: spacing,
@@ -395,11 +543,19 @@ class _LiveMapCard extends StatelessWidget {
 
 class _ActiveIncidentCard extends StatelessWidget {
   final _EmergencyPalette palette;
+  final ActiveIncident? activeIncident;
 
-  const _ActiveIncidentCard({required this.palette});
+  const _ActiveIncidentCard({
+    required this.palette,
+    required this.activeIncident,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final title = activeIncident?.title ?? 'Security Breach Detected';
+    final location = activeIncident?.location ?? 'Main Entrance - Zone 1';
+    final incidentId = activeIncident?.incidentId ?? 'INC-2025-0017';
+
     return _Panel(
       palette: palette,
       title: 'Active Incident',
@@ -420,7 +576,7 @@ class _ActiveIncidentCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Security Breach Detected',
+                      title,
                       style: TextStyle(
                         color: palette.text,
                         fontWeight: FontWeight.w900,
@@ -429,12 +585,12 @@ class _ActiveIncidentCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Main Entrance - Zone 1',
+                      location,
                       style: TextStyle(color: palette.muted, fontSize: 12),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Reported 08:42 AM   •   Incident ID: INC-2025-0017',
+                      'Reported ${_formatTime(activeIncident?.reportedAt)}   •   Incident ID: $incidentId',
                       style: TextStyle(color: palette.muted, fontSize: 11),
                     ),
                   ],
@@ -443,50 +599,47 @@ class _ActiveIncidentCard extends StatelessWidget {
             ],
           ),
           const Spacer(),
-          _IncidentProgress(palette: palette),
+          _IncidentProgress(
+            palette: palette,
+            steps: activeIncident?.steps ?? [],
+          ),
         ],
       ),
     );
+  }
+
+  String _formatTime(DateTime? dateTime) {
+    if (dateTime == null) return 'Unknown';
+    final hour = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    final suffix = dateTime.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $suffix';
   }
 }
 
 class _IncidentFeedCard extends StatelessWidget {
   final _EmergencyPalette palette;
+  final List<IncidentFeedItem> incidentFeed;
 
-  const _IncidentFeedCard({required this.palette});
+  const _IncidentFeedCard({
+    required this.palette,
+    required this.incidentFeed,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final events = [
-      (
-        '08:42 AM',
-        'Security breach detected at Main Entrance',
-        'Zone 1',
-        palette.red,
-        Icons.warning_amber_rounded
-      ),
-      (
-        '08:43 AM',
-        'Response team dispatched',
-        'Unit 3',
-        palette.blue,
-        Icons.directions_car_filled_outlined
-      ),
-      (
-        '08:44 AM',
-        'Unit 3 en route to incident location',
-        '2 min ago',
-        palette.green,
-        Icons.route_rounded
-      ),
-      (
-        '08:45 AM',
-        'CCTV recording initiated',
-        'Main Entrance Camera',
-        palette.gold,
-        Icons.videocam_outlined
-      ),
-    ];
+    final events = incidentFeed.isEmpty
+        ? [
+            ('No events', 'No recent incidents', 'System', palette.muted, Icons.info_outline_rounded),
+          ]
+        : incidentFeed.map((item) => (
+            item.time,
+            item.description,
+            item.location,
+            _getColorForType(item.type, palette),
+            _getIconForType(item.icon),
+          )).toList();
+
     return _Panel(
       palette: palette,
       title: 'Incident Feed',
@@ -549,36 +702,70 @@ class _IncidentFeedCard extends StatelessWidget {
       ),
     );
   }
+
+  Color _getColorForType(String type, _EmergencyPalette palette) {
+    switch (type.toLowerCase()) {
+      case 'emergency':
+        return palette.red;
+      case 'warning':
+        return palette.gold;
+      case 'info':
+        return palette.blue;
+      default:
+        return palette.blue;
+    }
+  }
+
+  IconData _getIconForType(String icon) {
+    switch (icon.toLowerCase()) {
+      case 'warning':
+        return Icons.warning_amber_rounded;
+      case 'emergency':
+        return Icons.sos_rounded;
+      case 'info':
+        return Icons.info_outline_rounded;
+      default:
+        return Icons.notifications_active_rounded;
+    }
+  }
 }
 
 class _PersonnelCard extends StatelessWidget {
   final _EmergencyPalette palette;
+  final List<EmergencyPersonnel> personnel;
 
-  const _PersonnelCard({required this.palette});
+  const _PersonnelCard({
+    required this.palette,
+    required this.personnel,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final displayPersonnel = personnel.isEmpty
+        ? [('JD', 'No Personnel', '--', palette.muted)]
+        : personnel.map((p) => (
+            p.initials,
+            p.name,
+            '${p.zone}  •  ${p.bpm} BPM',
+            p.status == 'active' ? palette.red : palette.gold,
+          )).toList();
+
     return _Panel(
       palette: palette,
       title: 'Emergency Personnel',
       trailing: _MiniButton(palette: palette, label: 'View All'),
       child: Column(
         children: [
-          _PersonTile(
-            palette: palette,
-            initials: 'JL',
-            name: 'Jessica Lee',
-            meta: 'Zone 1  •  125 BPM',
-            color: palette.red,
-          ),
-          Divider(color: palette.line, height: 1),
-          _PersonTile(
-            palette: palette,
-            initials: 'MS',
-            name: 'Michael Smith',
-            meta: 'Zone 2  •  95 BPM',
-            color: palette.gold,
-          ),
+          for (int i = 0; i < displayPersonnel.length && i < 2; i++) ...[
+            if (i > 0) Divider(color: palette.line, height: 1),
+            _PersonTile(
+              palette: palette,
+              initials: displayPersonnel[i].$1,
+              name: displayPersonnel[i].$2,
+              meta: displayPersonnel[i].$3,
+              color: displayPersonnel[i].$4,
+            ),
+          ],
         ],
       ),
     );
@@ -587,30 +774,36 @@ class _PersonnelCard extends StatelessWidget {
 
 class _ContactsCard extends StatelessWidget {
   final _EmergencyPalette palette;
+  final List<EmergencyContact> contacts;
 
-  const _ContactsCard({required this.palette});
+  const _ContactsCard({
+    required this.palette,
+    required this.contacts,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final displayContacts = contacts.isEmpty
+        ? [('Emergency Services', '911', 'emergency')]
+        : contacts.map((c) => (c.name, c.number, c.type)).toList();
+
     return _Panel(
       palette: palette,
       title: 'Emergency Contacts',
       trailing: _MiniButton(palette: palette, label: 'View All'),
       child: Column(
         children: [
-          _ContactTile(
-            palette: palette,
-            icon: Icons.call_rounded,
-            title: 'Emergency Services',
-            subtitle: '911',
-          ),
-          Divider(color: palette.line, height: 1),
-          _ContactTile(
-            palette: palette,
-            icon: Icons.shield_rounded,
-            title: 'Security Team',
-            subtitle: '+1-555-0123',
-          ),
+          for (int i = 0; i < displayContacts.length && i < 2; i++) ...[
+            if (i > 0) Divider(color: palette.line, height: 1),
+            _ContactTile(
+              palette: palette,
+              icon: displayContacts[i].$3 == 'emergency'
+                  ? Icons.call_rounded
+                  : Icons.shield_rounded,
+              title: displayContacts[i].$1,
+              subtitle: displayContacts[i].$2,
+            ),
+          ],
         ],
       ),
     );
@@ -619,17 +812,22 @@ class _ContactsCard extends StatelessWidget {
 
 class _SystemStrip extends StatelessWidget {
   final _EmergencyPalette palette;
+  final SystemStatus? systemStatus;
 
-  const _SystemStrip({required this.palette});
+  const _SystemStrip({
+    required this.palette,
+    required this.systemStatus,
+  });
 
   @override
   Widget build(BuildContext context) {
     final items = [
-      ('System Status', 'Operational', Icons.wifi_rounded, palette.green),
-      ('Communication', 'Encrypted', Icons.lock_outline_rounded, palette.muted),
-      ('Weather', 'Clear, 28°C', Icons.wb_sunny_outlined, palette.gold),
-      ('Network', 'Stable', Icons.signal_cellular_alt_rounded, palette.green),
-      ('Last Updated', '08:45:12 AM', Icons.refresh_rounded, palette.blue),
+      ('System Status', systemStatus?.systemStatus ?? 'Operational', Icons.wifi_rounded,
+          systemStatus?.systemStatus == 'Operational' ? palette.green : palette.red),
+      ('Communication', systemStatus?.communication ?? 'Encrypted', Icons.lock_outline_rounded, palette.muted),
+      ('Weather', systemStatus?.weather ?? 'Clear, 28°C', Icons.wb_sunny_outlined, palette.gold),
+      ('Network', systemStatus?.network ?? 'Stable', Icons.signal_cellular_alt_rounded, palette.green),
+      ('Last Updated', systemStatus?.lastUpdated ?? '08:45:12 AM', Icons.refresh_rounded, palette.blue),
     ];
     return Container(
       height: 56,
@@ -923,44 +1121,51 @@ class _ContactTile extends StatelessWidget {
 
 class _IncidentProgress extends StatelessWidget {
   final _EmergencyPalette palette;
+  final List<IncidentStep> steps;
 
-  const _IncidentProgress({required this.palette});
+  const _IncidentProgress({
+    required this.palette,
+    required this.steps,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final steps = [
-      ('Reported', '08:42 AM', true),
-      ('Dispatched', '08:43 AM', true),
-      ('En Route', '', false),
-      ('On Scene', '', false),
-    ];
+    final displaySteps = steps.isEmpty
+        ? [
+            ('Reported', '08:42 AM', true),
+            ('Dispatched', '08:43 AM', true),
+            ('En Route', '', false),
+            ('On Scene', '', false),
+          ]
+        : steps.map((s) => (s.name, s.time, s.completed)).toList();
+
     return SizedBox(
       height: 62,
       child: Row(
         children: [
-          for (var i = 0; i < steps.length; i++) ...[
+          for (var i = 0; i < displaySteps.length; i++) ...[
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   CircleAvatar(
                     radius: 10,
-                    backgroundColor: steps[i].$3 ? palette.red : palette.line,
+                    backgroundColor: displaySteps[i].$3 ? palette.red : palette.line,
                     child: Icon(
-                      steps[i].$3 ? Icons.check_rounded : Icons.circle,
+                      displaySteps[i].$3 ? Icons.check_rounded : Icons.circle,
                       color: Colors.white,
-                      size: steps[i].$3 ? 13 : 6,
+                      size: displaySteps[i].$3 ? 13 : 6,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    steps[i].$1,
+                    displaySteps[i].$1,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: palette.muted, fontSize: 9),
                   ),
                   Text(
-                    steps[i].$2,
+                    displaySteps[i].$2,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: palette.text, fontSize: 8),
@@ -968,192 +1173,15 @@ class _IncidentProgress extends StatelessWidget {
                 ],
               ),
             ),
-            if (i != steps.length - 1)
+            if (i != displaySteps.length - 1)
               Expanded(
                 child: Divider(
-                  color: steps[i].$3 ? palette.red : palette.line,
+                  color: displaySteps[i].$3 ? palette.red : palette.line,
                   thickness: 1.5,
                 ),
               ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-// ignore: unused_element
-class _LanguagePill extends StatelessWidget {
-  final _EmergencyPalette palette;
-
-  const _LanguagePill({required this.palette});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 38,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-        color: palette.card,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: palette.border),
-      ),
-      child: Row(
-        children: [
-          Text('EN',
-              style: TextStyle(
-                  color: palette.text,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900)),
-          const SizedBox(width: 14),
-          Text('عربي',
-              style: TextStyle(
-                  color: palette.muted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800)),
-        ],
-      ),
-    );
-  }
-}
-
-// ignore: unused_element
-class _NotificationBell extends StatelessWidget {
-  final _EmergencyPalette palette;
-
-  const _NotificationBell({required this.palette});
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        _SquareIconButton(
-          palette: palette,
-          icon: Icons.notifications_none_rounded,
-          onPressed: () {},
-        ),
-        Positioned(
-          right: -4,
-          top: -6,
-          child: CircleAvatar(
-            radius: 9,
-            backgroundColor: palette.redHot,
-            child: const Text(
-              '3',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SquareIconButton extends StatelessWidget {
-  final _EmergencyPalette palette;
-  final IconData icon;
-  final VoidCallback onPressed;
-
-  const _SquareIconButton({
-    required this.palette,
-    required this.icon,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 40,
-      height: 40,
-      child: OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: palette.text,
-          backgroundColor: palette.card,
-          side: BorderSide(color: palette.border),
-          padding: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-        child: Icon(icon, size: 20),
-      ),
-    );
-  }
-}
-
-class _SmallIconButton extends StatelessWidget {
-  final _EmergencyPalette palette;
-  final IconData icon;
-
-  const _SmallIconButton({required this.palette, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 30,
-      height: 30,
-      decoration: BoxDecoration(
-        color: palette.control,
-        borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: palette.border),
-      ),
-      child: Icon(icon, color: palette.muted, size: 15),
-    );
-  }
-}
-
-class _MiniButton extends StatelessWidget {
-  final _EmergencyPalette palette;
-  final String label;
-
-  const _MiniButton({required this.palette, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: palette.blue.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: palette.blue.withValues(alpha: 0.35)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: palette.blue,
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-}
-
-class _PriorityPill extends StatelessWidget {
-  final _EmergencyPalette palette;
-
-  const _PriorityPill({required this.palette});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: palette.red.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: palette.red.withValues(alpha: 0.45)),
-      ),
-      child: Text(
-        'High Priority',
-        style: TextStyle(
-          color: palette.redHot,
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
-        ),
       ),
     );
   }
@@ -1227,24 +1255,76 @@ class _MapLegendDot extends StatelessWidget {
   }
 }
 
-// ignore: unused_element
-class _StatusDot extends StatelessWidget {
-  final Color color;
+class _MiniButton extends StatelessWidget {
+  final _EmergencyPalette palette;
+  final String label;
 
-  const _StatusDot({required this.color});
+  const _MiniButton({required this.palette, required this.label});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 8,
-      height: 8,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(color: color.withValues(alpha: 0.55), blurRadius: 8)
-        ],
+        color: palette.blue.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: palette.blue.withValues(alpha: 0.35)),
       ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: palette.blue,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _PriorityPill extends StatelessWidget {
+  final _EmergencyPalette palette;
+
+  const _PriorityPill({required this.palette});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: palette.red.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: palette.red.withValues(alpha: 0.45)),
+      ),
+      child: Text(
+        'High Priority',
+        style: TextStyle(
+          color: palette.redHot,
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _SmallIconButton extends StatelessWidget {
+  final _EmergencyPalette palette;
+  final IconData icon;
+
+  const _SmallIconButton({required this.palette, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(
+        color: palette.control,
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: palette.border),
+      ),
+      child: Icon(icon, color: palette.muted, size: 15),
     );
   }
 }
@@ -1434,4 +1514,16 @@ class _EmergencyPalette {
   Color get red => const Color(0xFFE53935);
   Color get redHot => const Color(0xFFFF4040);
   Color get redDark => const Color(0xFF4D0B14);
+}
+
+class IncidentStep {
+  final String name;
+  final String time;
+  final bool completed;
+
+  const IncidentStep({
+    required this.name,
+    required this.time,
+    required this.completed,
+  });
 }
