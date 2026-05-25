@@ -19,52 +19,36 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _messageController = TextEditingController();
 
-  final List<_AnnouncementEntry> _announcements = [
-    _AnnouncementEntry(
-      model: AnnouncementModel(
-        title: 'Security Update Available',
-        message: 'System firmware v2.4.1 is ready for deployment',
-        priority: 'Medium',
-        sender: 'System',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 2)),
-      ),
-      scheduled: false,
-      visual: _AnnouncementVisual.update,
-    ),
-    _AnnouncementEntry(
-      model: AnnouncementModel(
-        title: 'Worker #21 entered Zone A',
-        message: 'Location updated • All systems normal',
-        priority: 'Info',
-        sender: 'Tracker',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 8)),
-      ),
-      scheduled: false,
-      visual: _AnnouncementVisual.worker,
-    ),
-    _AnnouncementEntry(
-      model: AnnouncementModel(
-        title: 'SOS button pressed',
-        message: 'Worker #15 • Immediate attention required',
-        priority: 'High',
-        sender: 'Emergency',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 9)),
-      ),
-      scheduled: false,
-      visual: _AnnouncementVisual.sos,
-    ),
-    _AnnouncementEntry(
-      model: AnnouncementModel(
-        title: 'Device #45 connected',
-        message: 'New device synced successfully',
-        priority: 'Info',
-        sender: 'Devices',
-        timestamp: DateTime.now().subtract(const Duration(minutes: 12)),
-      ),
-      scheduled: true,
-      visual: _AnnouncementVisual.device,
-    ),
-  ];
+  List<_AnnouncementEntry> _announcements = [];
+bool _isLoading = true;
+
+@override
+void initState() {
+  super.initState();
+  _loadAnnouncements();
+
+}
+
+
+_AnnouncementVisual _getVisualByPriority(String priority) {
+  switch (priority.toLowerCase()) {
+    case 'high': return _AnnouncementVisual.sos;
+    case 'medium': return _AnnouncementVisual.update;
+    default: return _AnnouncementVisual.worker;
+  }
+}
+
+
+_AnnouncementVisual _getVisualFromPriority(String priority) {
+  switch (priority.toLowerCase()) {
+    case 'high':
+      return _AnnouncementVisual.sos;
+    case 'medium':
+      return _AnnouncementVisual.update;
+    default:
+      return _AnnouncementVisual.worker;
+  }
+}
 
   _AnnouncementFilter _activeFilter = _AnnouncementFilter.all;
   _AnnouncementPriority _selectedPriority = _AnnouncementPriority.medium;
@@ -94,142 +78,217 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
   int get _scheduledCount =>
       _announcements.where((item) => item.scheduled).length;
 
-  void _sendAnnouncement() {
-    final title = _titleController.text.trim();
-    final message = _messageController.text.trim();
-    if (title.isEmpty || message.isEmpty) return;
+  void _sendAnnouncement() async {
+  final title = _titleController.text.trim();
+  final message = _messageController.text.trim();
+  if (title.isEmpty || message.isEmpty) return;
+
+  setState(() => _isLoading = true);
+
+  try {
+    final newAnnouncement = await AnnouncementsService().createAnnouncement(
+      title: title,
+      message: message,
+      priority: _selectedPriority.label,
+      sender: 'Admin',
+    );
 
     setState(() {
-      _announcements.insert(
-        0,
-        _AnnouncementEntry(
-          model: AnnouncementModel(
-            title: title,
-            message: message,
-            priority: _selectedPriority.label,
-            sender: 'Admin',
-            timestamp: DateTime.now(),
-          ),
-          scheduled: _scheduleMode == _ScheduleMode.later,
-          visual: _AnnouncementVisual.update,
-        ),
-      );
+      _announcements.insert(0, _AnnouncementEntry(
+        model: newAnnouncement,
+        scheduled: false,
+        visual: _getVisualByPriority(newAnnouncement.priority),
+      ));
       _titleController.clear();
       _messageController.clear();
       _selectedPriority = _AnnouncementPriority.medium;
       _scheduleMode = _ScheduleMode.now;
       _activeFilter = _AnnouncementFilter.all;
+      _isLoading = false;
     });
-  }
-
-  Future<void> _openAnnouncementActions(_AnnouncementEntry entry) async {
-    final titleController = TextEditingController(text: entry.model.title);
-    final messageController = TextEditingController(text: entry.model.message);
-    var priority = _priorityFromLabel(entry.model.priority);
-
-    final action = await showDialog<String>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Edit Announcement'),
-          content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Title',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: messageController,
-                  maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: 'Message',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<_AnnouncementPriority>(
-                  initialValue: priority,
-                  decoration: const InputDecoration(
-                    labelText: 'Priority',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: _AnnouncementPriority.values
-                      .map(
-                        (item) => DropdownMenuItem(
-                          value: item,
-                          child: Text(item.label),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setDialogState(() => priority = value);
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton.icon(
-              onPressed: () => Navigator.pop(context, 'delete'),
-              icon: const Icon(Icons.delete_outline_rounded),
-              label: const Text('Delete'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, 'save'),
-              child: const Text('Save'),
-            ),
-          ],
-        ),
-      ),
+  } catch (e) {
+    setState(() => _isLoading = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Failed to send announcement: $e')),
     );
+  }
+}
+Future<void> _openAnnouncementActions(_AnnouncementEntry entry) async {
+  String _localizedPriority(String priority) {
+  final lang = context.read<LanguageProvider>();
+  switch (priority.toLowerCase()) {
+    case 'high':
+      return lang.getText('high');
+    case 'medium':
+      return lang.getText('medium');
+    case 'low':
+      return lang.getText('low');
+    default:
+      return priority;
+  }
+}
+_AnnouncementVisual _getVisualByPriority(String priority) {
+  switch (priority.toLowerCase()) {
+    case 'high': return _AnnouncementVisual.sos;
+    case 'medium': return _AnnouncementVisual.update;
+    default: return _AnnouncementVisual.worker;
+  }
+}
+  _AnnouncementPriority _priorityFromLabel(String label) {
+  return _AnnouncementPriority.values.firstWhere(
+    (priority) => priority.label.toLowerCase() == label.toLowerCase(),
+    orElse: () => _AnnouncementPriority.medium,
+  );
+}
+  final lang = context.read<LanguageProvider>();
+  final titleController = TextEditingController(text: entry.model.title);
+  final messageController = TextEditingController(text: entry.model.message);
+  var priority = _priorityFromLabel(entry.model.priority);
 
-    if (!mounted) return;
-    if (action == 'delete') {
+  final action = await showDialog<String>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setDialogState) => AlertDialog(
+        title: Text(lang.getText('editAnnouncement')),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleController,
+                decoration: InputDecoration(
+                  labelText: lang.getText('title'),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: messageController,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  labelText: lang.getText('message'),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<_AnnouncementPriority>(
+                value: priority,
+                decoration: InputDecoration(
+                  labelText: lang.getText('priority'),
+                  border: OutlineInputBorder(),
+                ),
+                items: _AnnouncementPriority.values
+                    .map(
+                      (item) => DropdownMenuItem(
+                        value: item,
+                        child: Text(_localizedPriority(item.label)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setDialogState(() => priority = value);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () => Navigator.pop(context, 'delete'),
+            icon: const Icon(Icons.delete_outline_rounded),
+            label: Text(lang.getText('delete')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(lang.getText('cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'save'),
+            child: Text(lang.getText('save')),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  if (!mounted) return;
+  
+  if (action == 'delete') {
+    try {
+      await AnnouncementsService().deleteAnnouncement(entry.model.id);
       setState(() => _announcements.remove(entry));
-    } else if (action == 'save') {
-      final title = titleController.text.trim();
-      final message = messageController.text.trim();
-      if (title.isEmpty || message.isEmpty) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(lang.getText('announcementDeleted'))),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to delete: $e')),
+      );
+    }
+  } else if (action == 'save') {
+    final title = titleController.text.trim();
+    final message = messageController.text.trim();
+    if (title.isEmpty || message.isEmpty) return;
+    
+    try {
+      final updated = await AnnouncementsService().updateAnnouncement(
+        id: entry.model.id,
+        title: title,
+        message: message,
+        priority: priority.label,
+      );
       setState(() {
         final index = _announcements.indexOf(entry);
         if (index == -1) return;
         _announcements[index] = _AnnouncementEntry(
-          model: AnnouncementModel(
-            title: title,
-            message: message,
-            priority: priority.label,
-            sender: entry.model.sender,
-            timestamp: entry.model.timestamp,
-          ),
+          model: updated,
           scheduled: entry.scheduled,
-          visual: entry.visual,
+          visual: _getVisualByPriority(updated.priority),
         );
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(lang.getText('announcementUpdated'))),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update: $e')),
+      );
     }
-
-    titleController.dispose();
-    messageController.dispose();
   }
 
-  _AnnouncementPriority _priorityFromLabel(String label) {
-    return _AnnouncementPriority.values.firstWhere(
-      (priority) => priority.label.toLowerCase() == label.toLowerCase(),
-      orElse: () => _AnnouncementPriority.medium,
+  titleController.dispose();
+  messageController.dispose();
+}
+Future<void> _loadAnnouncements() async {
+  setState(() => _isLoading = true);
+  try {
+    final announcements = await AnnouncementsService().getAnnouncements();
+    setState(() {
+      _announcements = announcements.map((item) => _AnnouncementEntry(
+        model: item,
+        scheduled: false,
+        visual: _getVisualByPriority(item.priority),
+      )).toList();
+      _isLoading = false;
+    });
+  } catch (e) {
+    setState(() => _isLoading = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Failed to load announcements: $e')),
     );
   }
+}
+
+_AnnouncementVisual _getVisualByPriority(String priority) {
+  switch (priority.toLowerCase()) {
+    case 'high': return _AnnouncementVisual.sos;
+    case 'medium': return _AnnouncementVisual.update;
+    default: return _AnnouncementVisual.worker;
+  }
+}
 
   String _timeAgo(DateTime timestamp) {
     final diff = DateTime.now().difference(timestamp);
@@ -692,6 +751,31 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
+              Text(
+                'Recent Announcements',
+                style: TextStyle(
+                  color: palette.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () {},
+                icon: Icon(
+                  Icons.filter_list_rounded,
+                  color: palette.textMuted,
+                ),
+                label: Text(
+                  'Filter',
+                  style: TextStyle(color: palette.textMuted),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Expanded(
             child: ListView.separated(
               itemCount: _filteredAnnouncements.length,
@@ -701,108 +785,104 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
                 final badge = _priorityStyle(entry.model.priority, palette);
                 final icon = _visualStyle(entry.visual, palette);
 
-                return InkWell(
-                  onTap: () => _openAnnouncementActions(entry),
-                  borderRadius: BorderRadius.circular(18),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.035),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: palette.borderSoft),
-                      boxShadow: [
-                        BoxShadow(
-                          color: palette.glow.withOpacity(0.04),
-                          blurRadius: 6,
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 58,
-                          height: 58,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: RadialGradient(
-                              colors: [
-                                icon.color.withOpacity(0.24),
-                                icon.color.withOpacity(0.08),
-                              ],
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.035),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: palette.borderSoft),
+                    boxShadow: [
+                      BoxShadow(
+                        color: palette.glow.withOpacity(0.04),
+                        blurRadius: 6,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 58,
+                        height: 58,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              icon.color.withOpacity(0.24),
+                              icon.color.withOpacity(0.08),
+                            ],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: icon.color.withOpacity(0.35),
+                              blurRadius: 22,
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: icon.color.withOpacity(0.35),
-                                blurRadius: 22,
-                              ),
-                            ],
-                          ),
-                          child: Icon(icon.icon, color: icon.color, size: 28),
+                          ],
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                entry.model.title,
-                                style: TextStyle(
-                                  color: palette.textPrimary,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 15,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                entry.model.message,
-                                style: TextStyle(
-                                  color: palette.textMuted,
-                                  height: 1.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                        child: Icon(icon.icon, color: icon.color, size: 28),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: badge.background,
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                entry.model.priority,
-                                style: TextStyle(
-                                  color: badge.foreground,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                            Text(
+                              entry.model.title,
+                              style: TextStyle(
+                                color: palette.textPrimary,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
                               ),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 8),
                             Text(
-                              _timeAgo(entry.model.timestamp),
+                              entry.model.message,
                               style: TextStyle(
                                 color: palette.textMuted,
-                                fontSize: 12,
+                                height: 1.5,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(width: 12),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          color: palette.textMuted,
-                          size: 28,
-                        ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 14),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: badge.background,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              entry.model.priority,
+                              style: TextStyle(
+                                color: badge.foreground,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            _timeAgo(entry.model.timestamp),
+                            style: TextStyle(
+                              color: palette.textMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 12),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: palette.textMuted,
+                        size: 28,
+                      ),
+                    ],
                   ),
                 );
               },
