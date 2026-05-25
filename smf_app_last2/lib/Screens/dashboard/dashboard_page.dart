@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
-
+import '../../services/announcements_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,7 +16,6 @@ import '../../services/users_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/dashboard_history.dart';
 import '../announcements/announcements_page.dart';
-import '../profile/profile_page.dart';
 import 'emergency_dashboard_page.dart';
 import 'map_overview_page.dart';
 import 'reports_page.dart';
@@ -48,6 +47,7 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage>
     with TickerProviderStateMixin {
   static const _profileImageKey = 'profile_image_url';
+  static const _profileDisplayNameKey = 'profile_display_name';
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   _DashboardTab _selectedTab = _DashboardTab.dashboard;
   late final List<_AlertRecord> _alerts;
@@ -60,6 +60,7 @@ class _DashboardPageState extends State<DashboardPage>
   final SmfDevicesService _smfDevicesService = SmfDevicesService();
   User? _currentUser;
   String? _profileImageUrl;
+  String? _profileDisplayName;
   int? _onlineUserCount;
   int? _smfDeviceCount;
   int? _registeredSmfDeviceCount;
@@ -101,6 +102,7 @@ class _DashboardPageState extends State<DashboardPage>
 
     _loadCurrentUser();
     _loadProfileImage();
+    _loadProfileDisplayName();
     _loadOnlineUserCount();
     _loadSmfDeviceCount();
   }
@@ -109,6 +111,12 @@ class _DashboardPageState extends State<DashboardPage>
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() => _profileImageUrl = prefs.getString(_profileImageKey));
+  }
+
+  Future<void> _loadProfileDisplayName() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() => _profileDisplayName = prefs.getString(_profileDisplayNameKey));
   }
 
   Future<void> _loadCurrentUser() async {
@@ -250,15 +258,26 @@ class _DashboardPageState extends State<DashboardPage>
       return;
     }
 
-    if (_selectedTab != _DashboardTab.dashboard) {
-      setState(() => _selectedTab = _DashboardTab.dashboard);
-      DashboardHistory.replace(_slugForTab(_DashboardTab.dashboard));
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
       return;
     }
 
-    if (Navigator.canPop(context)) {
-      Navigator.pop(context);
+    if (_selectedTab != _DashboardTab.dashboard) {
+      setState(() => _selectedTab = _DashboardTab.dashboard);
+      DashboardHistory.replace(_slugForTab(_DashboardTab.dashboard));
     }
+  }
+
+  Future<bool> _handleDashboardSystemBack() async {
+    final drawerIsOpen = _scaffoldKey.currentState?.isDrawerOpen ?? false;
+    if (drawerIsOpen ||
+        _dashboardTabHistory.isNotEmpty ||
+        _selectedTab != _DashboardTab.dashboard) {
+      _goBackFromDashboardTab();
+      return false;
+    }
+    return true;
   }
 
   String _normalizeSeverity(String value) {
@@ -463,6 +482,130 @@ class _DashboardPageState extends State<DashboardPage>
     }).toList();
   }
 
+  String _localizedAlertTitle(_AlertRecord alert) {
+    final lang = context.read<LanguageProvider>();
+    final title = alert.title.toLowerCase();
+    if (title.contains('unauthorized')) {
+      return lang.getText('unauthorizedAccessAttempt');
+    }
+    if (title.contains('camera')) return lang.getText('cameraFeedUnstable');
+    if (title.contains('perimeter')) {
+      return lang.getText('perimeterSensorOffline');
+    }
+    if (title.contains('routine')) return lang.getText('routinePatrolCheckIn');
+    return alert.title;
+  }
+
+  String _localizedAlertDescription(_AlertRecord alert) {
+    final lang = context.read<LanguageProvider>();
+    final description = alert.description.toLowerCase();
+    if (description.contains('zone b gate')) return lang.getText('zoneBGate2');
+    if (description.contains('warehouse')) {
+      return lang.getText('warehouseNorth');
+    }
+    if (description.contains('fence')) return lang.getText('fenceLineEast');
+    if (description.contains('lobby')) return lang.getText('lobbyControl');
+    return alert.description;
+  }
+
+  String _localizedSeverity(String severity) {
+    final lang = context.read<LanguageProvider>();
+    switch (severity) {
+      case 'High':
+        return lang.getText('high');
+      case 'Medium':
+        return lang.getText('medium');
+      case 'Low':
+        return lang.getText('low');
+      default:
+        return severity;
+    }
+  }
+
+  String _localizedStatus(String status) {
+    final lang = context.read<LanguageProvider>();
+    switch (status.toLowerCase()) {
+      case 'open':
+        return lang.getText('open');
+      case 'investigating':
+        return lang.getText('investigating');
+      case 'acknowledged':
+        return lang.getText('acknowledged');
+      case 'closed':
+        return lang.getText('closed');
+      default:
+        return status;
+    }
+  }
+
+  String _localizedSource(String source) {
+    final lang = context.read<LanguageProvider>();
+    switch (source) {
+      case 'Access Control':
+        return lang.getText('accessControl');
+      case 'System':
+        return lang.getText('system');
+      case 'Device Monitor':
+        return lang.getText('deviceMonitor');
+      case 'Worker Device':
+        return lang.getText('workerDevice');
+      case 'Location Service':
+        return lang.getText('locationService');
+      default:
+        return source;
+    }
+  }
+
+  String _localizedFilter(String filter) {
+    final lang = context.read<LanguageProvider>();
+    switch (filter) {
+      case 'All':
+        return lang.getText('all');
+      case 'High':
+        return lang.getText('high');
+      case 'Medium':
+        return lang.getText('medium');
+      case 'Low':
+        return lang.getText('low');
+      default:
+        return filter;
+    }
+  }
+
+  String _localizedDateRange(String range) {
+    final lang = context.read<LanguageProvider>();
+    switch (range) {
+      case 'Today':
+        return lang.getText('today');
+      case 'Last 7 days':
+        return lang.getText('last7Days');
+      case 'This month':
+        return lang.getText('thisMonth');
+      default:
+        return range;
+    }
+  }
+
+  String _localizedTimeLabel(String label) {
+    final lang = context.read<LanguageProvider>();
+    final minutes = RegExp(r'^(\d+)\s+min').firstMatch(label);
+    if (minutes != null) {
+      return lang
+          .getText('minutesAgo')
+          .replaceAll('{count}', minutes.group(1)!);
+    }
+    return label;
+  }
+
+  String _localizedLocation(_AlertRecord alert) {
+    final lang = context.read<LanguageProvider>();
+    final source = _alertSource(alert);
+    if (source == 'Access Control') return lang.getText('mainEntranceBuildingA');
+    if (source == 'Device Monitor') return lang.getText('eastFenceCorridor');
+    if (source == 'System') return lang.getText('operationsLobby');
+    return _alertLocation(alert);
+  }
+
   void _setAlertSeverityFilter(String severity) {
     setState(() {
       _alertSeverityFilter = severity;
@@ -565,10 +708,12 @@ class _DashboardPageState extends State<DashboardPage>
     final isDesktop = width >= 1280;
     final isTablet = width >= 760;
 
-    return Directionality(
-      textDirection:
-          languageProvider.isArabic ? TextDirection.rtl : TextDirection.ltr,
-      child: Scaffold(
+    return WillPopScope(
+      onWillPop: _handleDashboardSystemBack,
+      child: Directionality(
+        textDirection:
+            languageProvider.isArabic ? TextDirection.rtl : TextDirection.ltr,
+        child: Scaffold(
         key: _scaffoldKey,
         backgroundColor: palette.pageBackground,
         drawer: isDesktop
@@ -580,6 +725,7 @@ class _DashboardPageState extends State<DashboardPage>
                   context: context,
                   palette: palette,
                   isDark: isDark,
+                  languageProvider: languageProvider,
                 ),
               ),
         body: Container(
@@ -649,6 +795,7 @@ class _DashboardPageState extends State<DashboardPage>
                         context: context,
                         palette: palette,
                         isDark: isDark,
+                        languageProvider: languageProvider,
                       ),
                     Expanded(
                       child: Padding(
@@ -680,7 +827,7 @@ class _DashboardPageState extends State<DashboardPage>
                     child: Padding(
                       padding: const EdgeInsets.only(left: 12, top: 8),
                       child: IconButton(
-                        tooltip: 'Menu',
+                        tooltip: languageProvider.getText('menu'),
                         onPressed: () =>
                             _scaffoldKey.currentState?.openDrawer(),
                         icon: Icon(
@@ -695,6 +842,7 @@ class _DashboardPageState extends State<DashboardPage>
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -702,6 +850,7 @@ class _DashboardPageState extends State<DashboardPage>
     required BuildContext context,
     required _DashboardPalette palette,
     required bool isDark,
+    required LanguageProvider languageProvider,
   }) {
     final user = _currentUser ??
         const User(
@@ -793,61 +942,61 @@ class _DashboardPageState extends State<DashboardPage>
                       padding: EdgeInsets.zero,
                       children: [
                         _sidebarItem(
-                          label: 'Dashboard',
+                          label: languageProvider.getText('dashboard'),
                           icon: Icons.dashboard_rounded,
                           tab: _DashboardTab.dashboard,
                           palette: palette,
                         ),
                         _sidebarItem(
-                          label: 'Map',
+                          label: languageProvider.getText('map'),
                           icon: Icons.map_outlined,
                           tab: _DashboardTab.map,
                           palette: palette,
                         ),
                         _sidebarItem(
-                          label: 'Alerts',
+                          label: languageProvider.getText('alerts'),
                           icon: Icons.notifications_none_rounded,
                           tab: _DashboardTab.alerts,
                           palette: palette,
                         ),
                         _sidebarItem(
-                          label: 'Roles',
+                          label: languageProvider.getText('roles'),
                           icon: Icons.admin_panel_settings_outlined,
                           tab: _DashboardTab.roles,
                           palette: palette,
                         ),
                         _sidebarItem(
-                          label: 'Zones',
+                          label: languageProvider.getText('zones'),
                           icon: Icons.location_city_outlined,
                           tab: _DashboardTab.zones,
                           palette: palette,
                         ),
                         _sidebarItem(
-                          label: 'SMF Devices',
+                          label: languageProvider.getText('smfDevices'),
                           icon: Icons.memory_outlined,
                           tab: _DashboardTab.smfDevices,
                           palette: palette,
                         ),
                         _sidebarItem(
-                          label: 'Announcements',
+                          label: languageProvider.getText('announcements'),
                           icon: Icons.campaign_rounded,
                           tab: _DashboardTab.announcements,
                           palette: palette,
                         ),
                         _sidebarItem(
-                          label: 'Emergency',
+                          label: languageProvider.getText('emergency'),
                           icon: Icons.warning_amber_rounded,
                           tab: _DashboardTab.emergency,
                           palette: palette,
                         ),
                         _sidebarItem(
-                          label: 'Users',
+                          label: languageProvider.getText('users'),
                           icon: Icons.people_outline_rounded,
                           tab: _DashboardTab.users,
                           palette: palette,
                         ),
                         _sidebarItem(
-                          label: 'Reports',
+                          label: languageProvider.getText('reports'),
                           icon: Icons.description_outlined,
                           tab: _DashboardTab.reports,
                           palette: palette,
@@ -861,12 +1010,10 @@ class _DashboardPageState extends State<DashboardPage>
                     child: InkWell(
                       borderRadius: BorderRadius.circular(18),
                       onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const ProfilePage(),
-                          ),
-                        ).then((_) => _loadProfileImage());
+                        Navigator.pushNamed(context, '/profile').then((_) {
+                          _loadProfileImage();
+                          _loadProfileDisplayName();
+                        });
                       },
                       child: Container(
                         width: 58,
@@ -1009,8 +1156,8 @@ class _DashboardPageState extends State<DashboardPage>
         );
       case _DashboardTab.map:
         return _pageShell(
-          title: 'Map',
-          subtitle: 'Live facility zones and event monitoring.',
+          title: languageProvider.getText('map'),
+          subtitle: languageProvider.getText('mapSubtitleDashboard'),
           heroIcon: Icons.location_on_rounded,
           heroAccent: const Color(0xFF7C3AED),
           child: const MapOverviewPage(),
@@ -1022,9 +1169,8 @@ class _DashboardPageState extends State<DashboardPage>
         return const RolesManagementPage();
       case _DashboardTab.zones:
         return _pageShell(
-          title: 'Zones',
-          subtitle:
-              'Review protected areas, site boundaries, and access regions.',
+          title: languageProvider.getText('zones'),
+          subtitle: languageProvider.getText('zonesSubtitleDashboard'),
           heroIcon: Icons.location_city_rounded,
           heroAccent: palette.goldAccent,
           child: const ZonesManagementPage(),
@@ -1032,9 +1178,8 @@ class _DashboardPageState extends State<DashboardPage>
         );
       case _DashboardTab.smfDevices:
         return _pageShell(
-          title: 'SMF Devices',
-          subtitle:
-              'Manage registered security hardware and trusted factory devices.',
+          title: languageProvider.getText('smfDevices'),
+          subtitle: languageProvider.getText('smfDevicesSubtitleDashboard'),
           heroIcon: Icons.memory_rounded,
           heroAccent: palette.primaryBlue2,
           child: const SmfDevicesManagementPage(showAppBar: false),
@@ -1044,15 +1189,15 @@ class _DashboardPageState extends State<DashboardPage>
         return const AnnouncementsPage(embedded: true);
       case _DashboardTab.emergency:
         return _pageShell(
-          title: 'Emergency Dashboard',
-          subtitle: 'Monitor incidents, response teams, and urgent status.',
+          title: languageProvider.getText('emergencyDashboard'),
+          subtitle: languageProvider.getText('emergencySubtitleDashboard'),
           child: const EmergencyDashboardPage(),
           palette: palette,
         );
       case _DashboardTab.users:
         return _pageShell(
-          title: 'Users',
-          subtitle: 'Manage workforce visibility and access.',
+          title: languageProvider.getText('users'),
+          subtitle: languageProvider.getText('usersSubtitleDashboard'),
           heroIcon: Icons.groups_rounded,
           heroAccent: palette.success,
           child: const UsersManagementPage(),
@@ -1099,6 +1244,8 @@ class _DashboardPageState extends State<DashboardPage>
                   themeProvider: themeProvider,
                 ),
                 const SizedBox(height: 24),
+                _systemOverviewCard(palette: palette),
+                const SizedBox(height: 24),
                 GridView.builder(
                   itemCount: 2,
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -1112,20 +1259,21 @@ class _DashboardPageState extends State<DashboardPage>
                   itemBuilder: (context, index) {
                     final cards = [
                       _metricCard(
-                        title: 'Online Users',
+                        title: languageProvider.getText('onlineUsers'),
                         value: (_onlineUserCount ?? 0).toString(),
                         delta: '',
-                        deltaLabel: 'users in system',
+                        deltaLabel: languageProvider.getText('usersInSystem'),
                         accent: palette.success,
                         icon: Icons.groups_rounded,
                         palette: palette,
                         onTap: () => _selectDashboardTab(_DashboardTab.users),
                       ),
                       _metricCard(
-                        title: 'Devices',
+                        title: languageProvider.getText('devices'),
                         value: (_smfDeviceCount ?? 0).toString(),
                         delta: '',
-                        deltaLabel: 'SMF devices registered',
+                        deltaLabel:
+                            languageProvider.getText('smfDevicesRegistered'),
                         accent: palette.primaryBlue2,
                         icon: Icons.memory_rounded,
                         palette: palette,
@@ -1152,12 +1300,15 @@ class _DashboardPageState extends State<DashboardPage>
                   children: [
                     _recentAlertsCard(
                       palette: palette,
+                      languageProvider: languageProvider,
                     ),
                     _deviceOverviewCard(
                       palette: palette,
+                      languageProvider: languageProvider,
                     ),
                     _quickActionsCard(
                       palette: palette,
+                      languageProvider: languageProvider,
                     ),
                   ],
                 ),
@@ -1372,7 +1523,7 @@ class _DashboardPageState extends State<DashboardPage>
                           children: [
                             _heroAccentRule(palette),
                             Text(
-                              'Security You Rely On',
+                              languageProvider.getText('securityTagline'),
                               style: TextStyle(
                                 color: palette.heroText,
                                 fontSize: isDesktop ? 26 : 18,
@@ -1402,12 +1553,16 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   String _displayName(User user) {
+    final savedName = _profileDisplayName?.trim();
+    if (savedName != null && savedName.isNotEmpty) return savedName;
     final name = user.name.trim();
     if (name.isNotEmpty) return name;
     final email = user.email.trim();
     if (email.isNotEmpty) return email.split('@').first;
-    if (_displayRole(user).toUpperCase().contains('ADMIN')) return 'Admin User';
-    return 'Current User';
+    if (_displayRole(user).toUpperCase().contains('ADMIN')) {
+      return context.read<LanguageProvider>().getText('roleAdmin');
+    }
+    return context.read<LanguageProvider>().getText('user');
   }
 
   String _displayRole(User user) {
@@ -1970,95 +2125,148 @@ class _DashboardPageState extends State<DashboardPage>
   Widget _systemOverviewCard({
     required _DashboardPalette palette,
   }) {
-    return _glassCard(
-      palette: palette,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final compact =
-              constraints.maxWidth < 380 || constraints.maxHeight < 230;
-          final qrSize = compact
-              ? math.max(72.0, math.min(96.0, constraints.maxHeight - 118))
-              : math.min(186.0, constraints.maxHeight - 64);
-          final qr = SizedBox(
-            width: qrSize,
-            height: qrSize,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: Image.asset(
-                'assets/images/qr.jpeg',
-                fit: BoxFit.cover,
-                filterQuality: FilterQuality.high,
+    final languageProvider = context.watch<LanguageProvider>();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 620;
+        final qrSize = compact ? 150.0 : 172.0;
+        final qr = Container(
+          width: qrSize,
+          height: qrSize,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.22),
+                blurRadius: 22,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.asset(
+              'assets/images/qr.jpeg',
+              fit: BoxFit.cover,
+              filterQuality: FilterQuality.high,
+            ),
+          ),
+        );
+        final copy = Column(
+          crossAxisAlignment:
+              compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Scan Me',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 31,
               ),
             ),
-          );
-          final copy = Column(
-            crossAxisAlignment:
-                compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Scan Me',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: palette.textPrimary,
-                  fontWeight: FontWeight.w800,
-                  fontSize: compact ? 20 : 30,
-                ),
+            const SizedBox(height: 18),
+            const Text(
+              'SMF',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 27,
               ),
-              SizedBox(height: compact ? 8 : 14),
-              Text(
-                'SMF',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: palette.textPrimary,
-                  fontWeight: FontWeight.w900,
-                  fontSize: compact ? 18 : 25,
-                ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              languageProvider.getText('securityTagline'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: compact ? TextAlign.center : TextAlign.start,
+              style: const TextStyle(
+                color: Color(0xFFAFC2E7),
+                height: 1.35,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
               ),
-              SizedBox(height: compact ? 4 : 8),
-              Text(
-                'Security You Rely On',
-                maxLines: compact ? 1 : 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: compact ? TextAlign.center : TextAlign.start,
-                style: TextStyle(
-                  color: palette.textMuted,
-                  height: compact ? 1.2 : 1.4,
-                  fontSize: compact ? 13 : 17,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          );
+            ),
+          ],
+        );
 
-          if (compact) {
-            return Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                qr,
-                const SizedBox(height: 10),
-                copy,
+        return Container(
+          width: double.infinity,
+          constraints: BoxConstraints(minHeight: compact ? 330 : 220),
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 24 : 32,
+            vertical: compact ? 28 : 24,
+          ),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [
+                Color(0xFF092D50),
+                Color(0xFF061E3C),
+                Color(0xFF03142D),
               ],
-            );
-          }
-
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              qr,
-              const SizedBox(width: 24),
-              Expanded(child: copy),
+            ),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xFF145C93)),
+            boxShadow: [
+              BoxShadow(
+                color: palette.cardShadow,
+                blurRadius: 40,
+                offset: const Offset(0, 20),
+              ),
             ],
-          );
-        },
-      ),
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                top: -70,
+                right: compact ? -90 : 70,
+                bottom: -70,
+                child: Container(
+                  width: compact ? 160 : 240,
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: const Color(0xFF1F78B4).withOpacity(0.44),
+                      width: 2,
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              compact
+                  ? Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        qr,
+                        const SizedBox(height: 18),
+                        copy,
+                      ],
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        qr,
+                        const SizedBox(width: 28),
+                        Expanded(child: copy),
+                      ],
+                    ),
+            ],
+          ),
+        );
+      },
     );
   }
 
   Widget _recentAlertsCard({
     required _DashboardPalette palette,
+    required LanguageProvider languageProvider,
   }) {
     return _glassCard(
       palette: palette,
@@ -2068,7 +2276,7 @@ class _DashboardPageState extends State<DashboardPage>
           Row(
             children: [
               Text(
-                'Recent Alerts',
+                languageProvider.getText('recentAlerts'),
                 style: TextStyle(
                   color: palette.textPrimary,
                   fontWeight: FontWeight.w800,
@@ -2078,7 +2286,7 @@ class _DashboardPageState extends State<DashboardPage>
               const Spacer(),
               TextButton(
                 onPressed: () => _selectDashboardTab(_DashboardTab.alerts),
-                child: const Text('View All'),
+                child: Text(languageProvider.getText('viewAll')),
               ),
             ],
           ),
@@ -2110,7 +2318,7 @@ class _DashboardPageState extends State<DashboardPage>
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                alert.title,
+                                _localizedAlertTitle(alert),
                                 style: TextStyle(
                                   color: palette.textPrimary,
                                   fontWeight: FontWeight.w700,
@@ -2118,7 +2326,7 @@ class _DashboardPageState extends State<DashboardPage>
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                alert.timeLabel,
+                                _localizedTimeLabel(alert.timeLabel),
                                 style: TextStyle(color: palette.textMuted),
                               ),
                             ],
@@ -2135,7 +2343,7 @@ class _DashboardPageState extends State<DashboardPage>
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
-                            alert.severity,
+                            _localizedSeverity(alert.severity),
                             style: TextStyle(
                               color: _severityColor(alert.severity, palette),
                               fontWeight: FontWeight.w700,
@@ -2156,6 +2364,7 @@ class _DashboardPageState extends State<DashboardPage>
 
   Widget _deviceOverviewCard({
     required _DashboardPalette palette,
+    required LanguageProvider languageProvider,
   }) {
     return Material(
       color: Colors.transparent,
@@ -2168,7 +2377,7 @@ class _DashboardPageState extends State<DashboardPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Device Overview',
+            languageProvider.getText('deviceOverview'),
             style: TextStyle(
               color: palette.textPrimary,
               fontWeight: FontWeight.w800,
@@ -2216,7 +2425,7 @@ class _DashboardPageState extends State<DashboardPage>
                             ),
                           ),
                           Text(
-                            'Total',
+                            languageProvider.getText('total'),
                             style: TextStyle(
                               color: palette.textMuted,
                               fontWeight: FontWeight.w700,
@@ -2233,13 +2442,13 @@ class _DashboardPageState extends State<DashboardPage>
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       _legendItem(
-                        'Registered',
+                        languageProvider.getText('registered'),
                         (_registeredSmfDeviceCount ?? 0).toString(),
                         palette.success,
                         palette,
                       ),
                       _legendItem(
-                        'Unregistered',
+                        languageProvider.getText('unregistered'),
                         ((_smfDeviceCount ?? 0) -
                                 (_registeredSmfDeviceCount ?? 0))
                             .clamp(0, 999999)
@@ -2248,7 +2457,7 @@ class _DashboardPageState extends State<DashboardPage>
                         palette,
                       ),
                       _legendItem(
-                        'Total Devices',
+                        languageProvider.getText('totalDevices'),
                         (_smfDeviceCount ?? 0).toString(),
                         palette.primaryBlue2,
                         palette,
@@ -2305,6 +2514,7 @@ class _DashboardPageState extends State<DashboardPage>
 
   Widget _quickActionsCard({
     required _DashboardPalette palette,
+    required LanguageProvider languageProvider,
   }) {
     return _glassCard(
       palette: palette,
@@ -2312,7 +2522,7 @@ class _DashboardPageState extends State<DashboardPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Quick Actions',
+            languageProvider.getText('quickActions'),
             style: TextStyle(
               color: palette.textPrimary,
               fontWeight: FontWeight.w800,
@@ -2332,14 +2542,14 @@ class _DashboardPageState extends State<DashboardPage>
                   childAspectRatio: columns == 2 ? 1.55 : 2.45,
                   children: [
                     _quickActionTile(
-                      label: 'View Map',
+                      label: languageProvider.getText('viewMap'),
                       icon: Icons.location_on_outlined,
                       accent: const Color(0xFF7C3AED),
                       onTap: () => _selectDashboardTab(_DashboardTab.map),
                       palette: palette,
                     ),
                     _quickActionTile(
-                      label: 'Announcements',
+                      label: languageProvider.getText('announcements'),
                       icon: Icons.campaign_rounded,
                       accent: palette.goldAccent,
                       onTap: () =>
@@ -2533,6 +2743,7 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   Widget _buildAlertsPage(_DashboardPalette palette) {
+    final lang = context.watch<LanguageProvider>();
     final alertsPalette = palette;
     final filteredAlerts = _filteredAlerts();
     final selectedAlert = _selectedAlert(filteredAlerts);
@@ -2609,38 +2820,42 @@ class _DashboardPageState extends State<DashboardPage>
                 children: [
                   _alertStatCard(
                     palette: alertsPalette,
-                    label: 'Total Alerts',
+                    label: lang.getText('totalAlerts'),
                     value: '$totalAlerts',
-                    sublabel: 'Total Alerts',
+                    sublabel: lang.getText('totalAlerts'),
                     color: palette.danger,
                     icon: Icons.hexagon_outlined,
+                    selected: _alertSeverityFilter == 'All',
                     onTap: () => _setAlertSeverityFilter('All'),
                   ),
                   _alertStatCard(
                     palette: alertsPalette,
-                    label: 'High Priority',
+                    label: lang.getText('highPriority'),
                     value: '$highAlerts',
-                    sublabel: 'High Alerts',
+                    sublabel: lang.getText('highAlerts'),
                     color: palette.danger,
                     icon: Icons.report_gmailerrorred_rounded,
+                    selected: _alertSeverityFilter == 'High',
                     onTap: () => _setAlertSeverityFilter('High'),
                   ),
                   _alertStatCard(
                     palette: alertsPalette,
-                    label: 'Medium Priority',
+                    label: lang.getText('mediumPriority'),
                     value: '$mediumAlerts',
-                    sublabel: 'Medium Alerts',
+                    sublabel: lang.getText('mediumAlerts'),
                     color: palette.warning,
                     icon: Icons.warning_amber_rounded,
+                    selected: _alertSeverityFilter == 'Medium',
                     onTap: () => _setAlertSeverityFilter('Medium'),
                   ),
                   _alertStatCard(
                     palette: alertsPalette,
-                    label: 'Low Priority',
+                    label: lang.getText('lowPriority'),
                     value: '$lowAlerts',
-                    sublabel: 'Low Alerts',
+                    sublabel: lang.getText('lowAlerts'),
                     color: palette.primaryBlue2,
                     icon: Icons.info_outline_rounded,
+                    selected: _alertSeverityFilter == 'Low',
                     onTap: () => _setAlertSeverityFilter('Low'),
                   ),
                 ],
@@ -2656,7 +2871,7 @@ class _DashboardPageState extends State<DashboardPage>
                             Expanded(
                               child: _alertsToolbarButton(
                                 palette: alertsPalette,
-                                label: _alertSeverityFilter,
+                                label: _localizedFilter(_alertSeverityFilter),
                                 icon: Icons.filter_alt_outlined,
                                 items: const ['All', 'High', 'Medium', 'Low'],
                                 onSelected: (value) {
@@ -2668,7 +2883,7 @@ class _DashboardPageState extends State<DashboardPage>
                             Expanded(
                               child: _alertsToolbarButton(
                                 palette: alertsPalette,
-                                label: _alertDateRange,
+                                label: _localizedDateRange(_alertDateRange),
                                 icon: Icons.calendar_today_outlined,
                                 items: const [
                                   'Today',
@@ -2693,7 +2908,7 @@ class _DashboardPageState extends State<DashboardPage>
                         const SizedBox(width: 14),
                         _alertsToolbarButton(
                           palette: alertsPalette,
-                          label: _alertSeverityFilter,
+                          label: _localizedFilter(_alertSeverityFilter),
                           icon: Icons.filter_alt_outlined,
                           items: const ['All', 'High', 'Medium', 'Low'],
                           onSelected: (value) {
@@ -2703,7 +2918,7 @@ class _DashboardPageState extends State<DashboardPage>
                         const SizedBox(width: 14),
                         _alertsToolbarButton(
                           palette: alertsPalette,
-                          label: _alertDateRange,
+                          label: _localizedDateRange(_alertDateRange),
                           icon: Icons.calendar_today_outlined,
                           items: const ['Today', 'Last 7 days', 'This month'],
                           onSelected: (value) {
@@ -2762,6 +2977,7 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   Widget _alertsHeaderContent(_DashboardPalette palette) {
+    final lang = context.read<LanguageProvider>();
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2799,7 +3015,7 @@ class _DashboardPageState extends State<DashboardPage>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Alerts',
+                lang.getText('alerts'),
                 style: TextStyle(
                   color: palette.textPrimary,
                   fontSize: 40,
@@ -2808,7 +3024,7 @@ class _DashboardPageState extends State<DashboardPage>
               ),
               const SizedBox(height: 8),
               Text(
-                'Monitor and respond to critical events in real-time',
+                lang.getText('alertsSubtitle'),
                 style: TextStyle(
                   color: palette.textMuted,
                   fontSize: 18,
@@ -2823,6 +3039,7 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   Widget _alertsAddButton(_DashboardPalette palette) {
+    final lang = context.read<LanguageProvider>();
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -2840,7 +3057,7 @@ class _DashboardPageState extends State<DashboardPage>
       child: ElevatedButton.icon(
         onPressed: () => _showAlertDialog(palette),
         icon: const Icon(Icons.add_rounded),
-        label: const Text('Add Alert'),
+        label: Text(lang.getText('addAlert')),
         style: ElevatedButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           backgroundColor: Colors.transparent,
@@ -2855,6 +3072,7 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   Widget _alertsSearchBar(_DashboardPalette palette) {
+    final lang = context.read<LanguageProvider>();
     return Container(
       height: 46,
       decoration: BoxDecoration(
@@ -2875,7 +3093,7 @@ class _DashboardPageState extends State<DashboardPage>
             Icons.search_rounded,
             color: palette.textMuted,
           ),
-          hintText: 'Search alerts...',
+          hintText: lang.getText('searchAlerts'),
           hintStyle: TextStyle(color: palette.textMuted),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
@@ -2894,10 +3112,9 @@ class _DashboardPageState extends State<DashboardPage>
     required String sublabel,
     required Color color,
     required IconData icon,
+    required bool selected,
     VoidCallback? onTap,
   }) {
-    final selected = _alertSeverityFilter == label.split(' ').first ||
-        (label == 'Total Alerts' && _alertSeverityFilter == 'All');
     final card = Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -3009,7 +3226,9 @@ class _DashboardPageState extends State<DashboardPage>
             (item) => PopupMenuItem<String>(
               value: item,
               child: Text(
-                item,
+                items.contains('Today')
+                    ? _localizedDateRange(item)
+                    : _localizedFilter(item),
                 style: TextStyle(color: palette.textPrimary),
               ),
             ),
@@ -3049,6 +3268,7 @@ class _DashboardPageState extends State<DashboardPage>
     required List<_AlertRecord> alerts,
     required bool compact,
   }) {
+    final lang = context.read<LanguageProvider>();
     final totalAlerts = alerts.length;
     final totalPages = totalAlerts == 0
         ? 1
@@ -3082,7 +3302,7 @@ class _DashboardPageState extends State<DashboardPage>
                   Expanded(
                     flex: 36,
                     child: Text(
-                      'Alert',
+                      lang.getText('alert'),
                       style: TextStyle(
                         color: palette.textMuted,
                         fontWeight: FontWeight.w600,
@@ -3092,7 +3312,7 @@ class _DashboardPageState extends State<DashboardPage>
                   Expanded(
                     flex: 12,
                     child: Text(
-                      'Severity',
+                      lang.getText('severity'),
                       style: TextStyle(
                         color: palette.textMuted,
                         fontWeight: FontWeight.w600,
@@ -3102,7 +3322,7 @@ class _DashboardPageState extends State<DashboardPage>
                   Expanded(
                     flex: 16,
                     child: Text(
-                      'Source',
+                      lang.getText('source'),
                       style: TextStyle(
                         color: palette.textMuted,
                         fontWeight: FontWeight.w600,
@@ -3112,7 +3332,7 @@ class _DashboardPageState extends State<DashboardPage>
                   Expanded(
                     flex: 18,
                     child: Text(
-                      'Time',
+                      lang.getText('time'),
                       style: TextStyle(
                         color: palette.textMuted,
                         fontWeight: FontWeight.w600,
@@ -3122,7 +3342,7 @@ class _DashboardPageState extends State<DashboardPage>
                   Expanded(
                     flex: 12,
                     child: Text(
-                      'Status',
+                      lang.getText('status'),
                       style: TextStyle(
                         color: palette.textMuted,
                         fontWeight: FontWeight.w600,
@@ -3132,7 +3352,7 @@ class _DashboardPageState extends State<DashboardPage>
                   Expanded(
                     flex: 6,
                     child: Text(
-                      'Actions',
+                      lang.getText('actions'),
                       style: TextStyle(
                         color: palette.textMuted,
                         fontWeight: FontWeight.w600,
@@ -3147,7 +3367,7 @@ class _DashboardPageState extends State<DashboardPage>
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 40),
               child: Text(
-                'No alerts match the current filters.',
+                lang.getText('noAlertsMatch'),
                 style: TextStyle(color: palette.textMuted),
               ),
             )
@@ -3161,7 +3381,11 @@ class _DashboardPageState extends State<DashboardPage>
             Row(
               children: [
                 Text(
-                  'Showing ${pageStart + 1} to $pageEnd of $totalAlerts alerts',
+                  lang
+                      .getText('showingAlerts')
+                      .replaceAll('{start}', '${pageStart + 1}')
+                      .replaceAll('{end}', '$pageEnd')
+                      .replaceAll('{total}', '$totalAlerts'),
                   style: TextStyle(color: palette.textMuted),
                 ),
                 const Spacer(),
@@ -3215,6 +3439,7 @@ class _DashboardPageState extends State<DashboardPage>
     return (_AlertRecord alert) {
       final severityColor = _severityColor(alert.severity, palette);
       final source = _alertSource(alert);
+      final sourceLabel = _localizedSource(source);
       final statusColor = _alertStatusColor(alert.status, palette);
       final index = _alerts.indexOf(alert);
       final isSelected = index == _selectedAlertIndex;
@@ -3283,7 +3508,7 @@ class _DashboardPageState extends State<DashboardPage>
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  alert.title,
+                                  _localizedAlertTitle(alert),
                                   style: TextStyle(
                                     color: palette.textPrimary,
                                     fontSize: 17,
@@ -3292,7 +3517,7 @@ class _DashboardPageState extends State<DashboardPage>
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  alert.description,
+                                  _localizedAlertDescription(alert),
                                   style: TextStyle(
                                     color: palette.textMuted,
                                     fontSize: 14,
@@ -3311,17 +3536,17 @@ class _DashboardPageState extends State<DashboardPage>
                         runSpacing: 10,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          _pill(alert.severity, severityColor),
-                          _pill(alert.status, statusColor),
+                          _pill(_localizedSeverity(alert.severity), severityColor),
+                          _pill(_localizedStatus(alert.status), statusColor),
                           _detailMetaChip(
                             palette: palette,
                             icon: _alertSourceIcon(source),
-                            label: source,
+                            label: sourceLabel,
                           ),
                           _detailMetaChip(
                             palette: palette,
                             icon: Icons.schedule_rounded,
-                            label: alert.timeLabel,
+                            label: _localizedTimeLabel(alert.timeLabel),
                           ),
                         ],
                       ),
@@ -3357,7 +3582,7 @@ class _DashboardPageState extends State<DashboardPage>
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    alert.title,
+                                    _localizedAlertTitle(alert),
                                     style: TextStyle(
                                       color: palette.textPrimary,
                                       fontSize: 17,
@@ -3366,7 +3591,7 @@ class _DashboardPageState extends State<DashboardPage>
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    alert.description,
+                                    _localizedAlertDescription(alert),
                                     style: TextStyle(
                                       color: palette.textMuted,
                                       fontSize: 14,
@@ -3380,7 +3605,7 @@ class _DashboardPageState extends State<DashboardPage>
                       ),
                       Expanded(
                         flex: 12,
-                        child: _pill(alert.severity, severityColor),
+                        child: _pill(_localizedSeverity(alert.severity), severityColor),
                       ),
                       Expanded(
                         flex: 16,
@@ -3394,7 +3619,7 @@ class _DashboardPageState extends State<DashboardPage>
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                source,
+                                sourceLabel,
                                 style: TextStyle(color: palette.textPrimary),
                               ),
                             ),
@@ -3407,7 +3632,7 @@ class _DashboardPageState extends State<DashboardPage>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              alert.timeLabel,
+                              _localizedTimeLabel(alert.timeLabel),
                               style: TextStyle(
                                 color: palette.textPrimary,
                                 fontWeight: FontWeight.w700,
@@ -3415,7 +3640,7 @@ class _DashboardPageState extends State<DashboardPage>
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'May 16, 2025 11:45 AM',
+                              '2025-05-16 11:45',
                               style: TextStyle(
                                 color: palette.textMuted,
                                 fontSize: 13,
@@ -3426,7 +3651,7 @@ class _DashboardPageState extends State<DashboardPage>
                       ),
                       Expanded(
                         flex: 12,
-                        child: _pill(alert.status, statusColor),
+                        child: _pill(_localizedStatus(alert.status), statusColor),
                       ),
                       Expanded(
                         flex: 6,
@@ -3441,6 +3666,7 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   Widget _alertMenuButton(_DashboardPalette palette, int index) {
+    final lang = context.read<LanguageProvider>();
     return PopupMenuButton<String>(
       onSelected: (value) {
         if (value == 'edit') {
@@ -3454,14 +3680,14 @@ class _DashboardPageState extends State<DashboardPage>
         PopupMenuItem<String>(
           value: 'edit',
           child: Text(
-            'Edit',
+            lang.getText('edit'),
             style: TextStyle(color: palette.textPrimary),
           ),
         ),
         PopupMenuItem<String>(
           value: 'delete',
           child: Text(
-            'Delete',
+            lang.getText('delete'),
             style: TextStyle(color: palette.textPrimary),
           ),
         ),
@@ -3518,6 +3744,7 @@ class _DashboardPageState extends State<DashboardPage>
     required _DashboardPalette palette,
     required _AlertRecord? alert,
   }) {
+    final lang = context.read<LanguageProvider>();
     if (alert == null) {
       return const SizedBox.shrink();
     }
@@ -3525,6 +3752,7 @@ class _DashboardPageState extends State<DashboardPage>
     final severityColor = _severityColor(alert.severity, palette);
     final statusColor = _alertStatusColor(alert.status, palette);
     final source = _alertSource(alert);
+    final sourceLabel = _localizedSource(source);
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -3546,7 +3774,7 @@ class _DashboardPageState extends State<DashboardPage>
           Row(
             children: [
               Text(
-                'Alert Details',
+                lang.getText('alertDetails'),
                 style: TextStyle(
                   color: palette.textPrimary,
                   fontSize: 18,
@@ -3555,7 +3783,7 @@ class _DashboardPageState extends State<DashboardPage>
               ),
               const Spacer(),
               IconButton(
-                tooltip: 'Back',
+                tooltip: lang.getText('back'),
                 onPressed: _goBackFromDashboardTab,
                 icon: Icon(Icons.close_rounded, color: palette.textMuted),
               ),
@@ -3599,7 +3827,7 @@ class _DashboardPageState extends State<DashboardPage>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        alert.title,
+                        _localizedAlertTitle(alert),
                         style: TextStyle(
                           color: palette.textPrimary,
                           fontSize: 17,
@@ -3609,18 +3837,20 @@ class _DashboardPageState extends State<DashboardPage>
                       const SizedBox(height: 8),
                       _pill(
                         alert.severity == 'High'
-                            ? 'High Priority'
-                            : '${alert.severity} Priority',
+                            ? lang.getText('highPriority')
+                            : alert.severity == 'Medium'
+                                ? lang.getText('mediumPriority')
+                                : lang.getText('lowPriority'),
                         severityColor,
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        'Alert ID: ALT-2025-0516-001',
+                        '${lang.getText('alertId')} ALT-2025-0516-001',
                         style: TextStyle(color: palette.textMuted),
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'May 16, 2025 11:45 AM (2 min ago)',
+                        '2025-05-16 11:45 (${_localizedTimeLabel(alert.timeLabel)})',
                         style: TextStyle(color: palette.textMuted),
                       ),
                     ],
@@ -3632,47 +3862,47 @@ class _DashboardPageState extends State<DashboardPage>
           const SizedBox(height: 16),
           _detailRow(
             palette: palette,
-            label: 'Description',
-            value: alert.description,
+            label: lang.getText('description'),
+            value: _localizedAlertDescription(alert),
           ),
           _detailRow(
             palette: palette,
-            label: 'Source',
-            value: source,
+            label: lang.getText('source'),
+            value: sourceLabel,
           ),
           _detailRow(
             palette: palette,
-            label: 'Location',
-            value: _alertLocation(alert),
+            label: lang.getText('location'),
+            value: _localizedLocation(alert),
           ),
           _detailRow(
             palette: palette,
-            label: 'IP Address',
+            label: lang.getText('ipAddress'),
             value: _alertIpAddress(alert),
           ),
           _detailRow(
             palette: palette,
-            label: 'Device',
+            label: lang.getText('device'),
             value: _alertDevice(alert),
           ),
           _detailRow(
             palette: palette,
-            label: 'User Agent',
+            label: lang.getText('userAgent'),
             value: _alertUserAgent(alert),
           ),
           _detailRow(
             palette: palette,
-            label: 'Severity',
-            valueWidget: _pill(alert.severity, severityColor),
+            label: lang.getText('severity'),
+            valueWidget: _pill(_localizedSeverity(alert.severity), severityColor),
           ),
           _detailRow(
             palette: palette,
-            label: 'Status',
-            valueWidget: _pill(alert.status, statusColor),
+            label: lang.getText('status'),
+            valueWidget: _pill(_localizedStatus(alert.status), statusColor),
           ),
           const SizedBox(height: 18),
           Text(
-            'Actions',
+            lang.getText('actions'),
             style: TextStyle(
               color: palette.textPrimary,
               fontSize: 18,
@@ -3685,7 +3915,7 @@ class _DashboardPageState extends State<DashboardPage>
             child: ElevatedButton.icon(
               onPressed: () => _updateAlertStatus(alert, 'Acknowledged'),
               icon: const Icon(Icons.check_rounded),
-              label: const Text('Acknowledge Alert'),
+              label: Text(lang.getText('acknowledgeAlert')),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 18),
                 elevation: 0,
@@ -3705,7 +3935,7 @@ class _DashboardPageState extends State<DashboardPage>
                   onPressed: () => _updateAlertStatus(alert, 'In Progress'),
                   icon: Icon(Icons.north_east_rounded, color: palette.warning),
                   label: Text(
-                    'Escalate',
+                    lang.getText('escalate'),
                     style: TextStyle(color: palette.textPrimary),
                   ),
                   style: OutlinedButton.styleFrom(
@@ -3724,7 +3954,7 @@ class _DashboardPageState extends State<DashboardPage>
                   icon: Icon(Icons.verified_user_outlined,
                       color: palette.success),
                   label: Text(
-                    'Mark Resolved',
+                    lang.getText('markResolved'),
                     style: TextStyle(color: palette.textPrimary),
                   ),
                   style: OutlinedButton.styleFrom(
@@ -3805,6 +4035,7 @@ class _DashboardPageState extends State<DashboardPage>
         TextEditingController(text: existing?.description ?? '');
     String severity = existing?.severity ?? 'Medium';
     String status = existing?.status ?? 'Open';
+    final lang = context.read<LanguageProvider>();
 
     final result = await showDialog<_AlertRecord>(
       context: context,
@@ -3815,7 +4046,7 @@ class _DashboardPageState extends State<DashboardPage>
             borderRadius: BorderRadius.circular(24),
           ),
           title: Text(
-            index == null ? 'Add Alert' : 'Edit Alert',
+            index == null ? lang.getText('addAlert') : lang.getText('editAlert'),
             style: TextStyle(color: palette.textPrimary),
           ),
           content: StatefulBuilder(
@@ -3827,54 +4058,68 @@ class _DashboardPageState extends State<DashboardPage>
                   children: [
                     TextField(
                       controller: titleController,
-                      decoration: const InputDecoration(labelText: 'Title'),
+                      decoration:
+                          InputDecoration(labelText: lang.getText('title')),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: descriptionController,
                       decoration:
-                          const InputDecoration(labelText: 'Description'),
+                          InputDecoration(labelText: lang.getText('description')),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value: severity,
-                      items: const [
-                        DropdownMenuItem(value: 'Low', child: Text('Low')),
+                      items: [
+                        DropdownMenuItem(
+                          value: 'Low',
+                          child: Text(lang.getText('low')),
+                        ),
                         DropdownMenuItem(
                           value: 'Medium',
-                          child: Text('Medium'),
+                          child: Text(lang.getText('medium')),
                         ),
-                        DropdownMenuItem(value: 'High', child: Text('High')),
+                        DropdownMenuItem(
+                          value: 'High',
+                          child: Text(lang.getText('high')),
+                        ),
                       ],
                       onChanged: (value) {
                         if (value != null) {
                           setDialogState(() => severity = value);
                         }
                       },
-                      decoration: const InputDecoration(labelText: 'Severity'),
+                      decoration:
+                          InputDecoration(labelText: lang.getText('severity')),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value: status,
-                      items: const [
-                        DropdownMenuItem(value: 'Open', child: Text('Open')),
+                      items: [
+                        DropdownMenuItem(
+                          value: 'Open',
+                          child: Text(lang.getText('open')),
+                        ),
                         DropdownMenuItem(
                           value: 'Investigating',
-                          child: Text('Investigating'),
+                          child: Text(lang.getText('investigating')),
                         ),
                         DropdownMenuItem(
                           value: 'Acknowledged',
-                          child: Text('Acknowledged'),
+                          child: Text(lang.getText('acknowledged')),
                         ),
                         DropdownMenuItem(
-                            value: 'Closed', child: Text('Closed')),
+                          value: 'Closed',
+                          child: Text(lang.getText('closed')),
+                        ),
                       ],
                       onChanged: (value) {
                         if (value != null) {
                           setDialogState(() => status = value);
                         }
                       },
-                      decoration: const InputDecoration(labelText: 'Status'),
+                      decoration:
+                          InputDecoration(labelText: lang.getText('status')),
                     ),
                   ],
                 ),
@@ -3884,7 +4129,7 @@ class _DashboardPageState extends State<DashboardPage>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+              child: Text(lang.getText('cancel')),
             ),
             ElevatedButton(
               onPressed: () {
@@ -3895,7 +4140,7 @@ class _DashboardPageState extends State<DashboardPage>
                     description: descriptionController.text.trim(),
                     severity: severity,
                     status: status,
-                    timeLabel: existing?.timeLabel ?? 'Just now',
+                    timeLabel: existing?.timeLabel ?? lang.getText('justNow'),
                   ),
                 );
               },
@@ -3903,7 +4148,7 @@ class _DashboardPageState extends State<DashboardPage>
                 backgroundColor: palette.primaryBlue,
                 foregroundColor: Colors.white,
               ),
-              child: Text(index == null ? 'Add' : 'Save'),
+              child: Text(index == null ? lang.getText('add') : lang.getText('save')),
             ),
           ],
         );
@@ -3924,6 +4169,7 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   Future<void> _deleteAlert(int index) async {
+    final lang = context.read<LanguageProvider>();
     final confirm = await showDialog<bool>(
           context: context,
           builder: (context) {
@@ -3931,12 +4177,12 @@ class _DashboardPageState extends State<DashboardPage>
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(22),
               ),
-              title: const Text('Delete alert?'),
-              content: const Text('This action cannot be undone.'),
+              title: Text(lang.getText('deleteAlertQuestion')),
+              content: Text(lang.getText('actionCannotBeUndone')),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancel'),
+                  child: Text(lang.getText('cancel')),
                 ),
                 ElevatedButton(
                   onPressed: () => Navigator.pop(context, true),
@@ -3944,7 +4190,7 @@ class _DashboardPageState extends State<DashboardPage>
                     backgroundColor: const Color(0xFFEF4444),
                     foregroundColor: Colors.white,
                   ),
-                  child: const Text('Delete'),
+                  child: Text(lang.getText('delete')),
                 ),
               ],
             );
