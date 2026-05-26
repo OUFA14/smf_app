@@ -282,8 +282,6 @@ Future<void> _loadAnnouncements() async {
   }
 }
 
-
-
   String _timeAgo(DateTime timestamp) {
     final diff = DateTime.now().difference(timestamp);
     if (diff.inMinutes < 1) return 'Just now';
