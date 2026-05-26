@@ -109,6 +109,51 @@ class ApiService {
       accessToken: accessToken,
     );
   }
+  class AnnouncementModel {
+  final String id;
+  final String title;
+  final String message;
+  final String priority;
+  final String sender;
+  final DateTime timestamp;
+  bool isRead;
+
+  AnnouncementModel({
+    required this.id,
+    required this.title,
+    required this.message,
+    required this.priority,
+    required this.sender,
+    required this.timestamp,
+    this.isRead = false,
+  });
+
+  factory AnnouncementModel.fromJson(Map<String, dynamic> json) {
+    return AnnouncementModel(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      message: json['message']?.toString() ?? '',
+      priority: json['priority']?.toString() ?? 'Medium',
+      sender: json['sender']?.toString() ?? 'System',
+      timestamp: json['timestamp'] != null
+          ? DateTime.parse(json['timestamp'].toString())
+          : DateTime.now(),
+      isRead: json['isRead'] == true,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'message': message,
+      'priority': priority,
+      'sender': sender,
+      'timestamp': timestamp.toIso8601String(),
+      'isRead': isRead,
+    };
+  }
+}
 
   Future<ApiResponse<dynamic>> _send({
     required String method,
