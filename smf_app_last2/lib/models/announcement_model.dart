@@ -42,24 +42,4 @@ class AnnouncementModel {
       'isRead': isRead,
     };
   }
-
-  AnnouncementModel copyWith({
-    String? id,
-    String? title,
-    String? message,
-    String? priority,
-    String? sender,
-    DateTime? timestamp,
-    bool? isRead,
-  }) {
-    return AnnouncementModel(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      message: message ?? this.message,
-      priority: priority ?? this.priority,
-      sender: sender ?? this.sender,
-      timestamp: timestamp ?? this.timestamp,
-      isRead: isRead ?? this.isRead,
-    );
-  }
 }
