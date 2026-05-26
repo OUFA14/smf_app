@@ -249,7 +249,10 @@ class _SmfDevicesManagementPageState extends State<SmfDevicesManagementPage> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: AppBackButton(
+        leading: IconButton(
+  icon: const Icon(Icons.arrow_back),
+  onPressed: () => Navigator.pop(context),
+),
           color: Theme.of(context).colorScheme.onSurface,
         ),
         title: Text(context.watch<LanguageProvider>().getText('smfDevices')),
