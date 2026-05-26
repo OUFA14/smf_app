@@ -1,6 +1,6 @@
 import 'api_service.dart';
 import 'auth_service.dart';
-import '../models/announcement_model.dart';
+import '../Screens/announcements/announcement_model.dart';
 
 class AnnouncementsService {
   AnnouncementsService({ApiService? apiService})
@@ -28,15 +28,6 @@ class AnnouncementsService {
         .whereType<Map<String, dynamic>>()
         .map((item) => AnnouncementModel.fromJson(item))
         .toList();
-  }
-
-  Future<AnnouncementModel> getAnnouncement(String id) async {
-    final response = await _apiService.get(
-      '/announcements/$id',
-      headers: await AuthService.instance.authHeaders(),
-    );
-
-    return AnnouncementModel.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<AnnouncementModel> createAnnouncement({
@@ -76,13 +67,6 @@ class AnnouncementsService {
     );
 
     return AnnouncementModel.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<void> markAsRead(String id) async {
-    await _apiService.patch(
-      '/announcements/$id/read',
-      headers: await AuthService.instance.authHeaders(),
-    );
   }
 
   Future<void> deleteAnnouncement(String id) async {
